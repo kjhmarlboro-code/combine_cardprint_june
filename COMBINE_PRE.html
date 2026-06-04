@@ -1,0 +1,3763 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Performance 카드 출력</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600;700&family=Noto+Sans+KR:wght@500;700&display=swap" rel="stylesheet" />
+  <style>
+    /* NeuePlak-SemiBold — PC 설치본(local) */
+    @font-face {
+      font-family: "NeuePlak-SemiBold";
+      src:
+        local("NeuePlak-SemiBold"),
+        local("Neue Plak SemiBold"),
+        local("Neue Plak Semibold"),
+        local("Neue Plak Semi Bold"),
+        local("Neue Plak SB");
+      font-weight: normal;
+      font-style: normal;
+      font-display: swap;
+    }
+
+    :root {
+      --card-bg-image: url("assets/card-bg.png");
+      --cyan: #03ff33;
+      --white: #f5f5f5;
+      /* 미리보기 확대 배율 — 레이아웃은 .card-preview-frame 이 같은 배율로 공간 확보 */
+      --card-preview-scale: 2.2;
+      /* 카드 위 기록값만 표시(배경에 종목명 있음) — 위치·크기 조정 시 여기만 건드리면 됨 */
+      --overlay-metrics-gap-row: 0.8mm;
+      --overlay-metrics-gap-col: 2mm;
+      /* 배경 타이틀(한 줄) 아래에 기록값이 오도록 남기는 위쪽 여백 — PNG에 맞게 조정 */
+      --overlay-metric-title-reserve: 3mm;
+      /* 배경의 PERFORMANCE LAB 과 동일한 느낌의 배너 글자 (크기·줄높이) */
+      --overlay-banner-font-size: 5pt;
+      --overlay-banner-line-height: 1.15;
+      /* 참가자 이름: 세로 40% 연장(scaleY 1.4), 트래킹 -3% */
+      --overlay-name-stretch-y: 1.4;
+      --overlay-name-tracking: -0.03em;
+      --overlay-name-size-scale: 1.071;
+      /* 카드 중앙 평균 (6종목 완료 시만) */
+      --overlay-avg-font-size: calc(5pt * 2 * 1.5);
+      --overlay-avg-scale-x: 3.8;
+      --overlay-avg-tracking: -0.06em;
+      /* 6종목 기록: 평균 대비 표시 크기 (글자·가로 스트레치 동일 비율) */
+      --overlay-metric-size-factor: 0.6091875;
+      /* 6종목 숫자: 세로는 유지, 가로만 추가 배율 (scaleX에 곱함) — 기준 1.2에 1.1배 추가 */
+      --overlay-metric-stretch-x: 0.66;
+      /* 윗줄 좌·우: HANDGRIP(0), VERTICAL JUMP(1) 기록 세로 위치 (동일 높이) */
+      --overlay-metric-handgrip-offset-y: 4px;
+      /* 가운데 줄: NORDIC HAMSTRING(2), REACTION INTELLIGENCE(3) 동일 높이 */
+      --overlay-metric-index2-offset-y: -5px;
+      /* 아래 줄: 5-10-5 RUN(4), ZIGZAG AGILITY RUN(5) 동일 높이 */
+      --overlay-metric-index4-offset-y: -14px;
+      /* 왼쪽 열(0,2,4) 가로 보정 */
+      --overlay-metric-left-col-offset-x: 6px;
+      /* 오른쪽 열 2·4·6번(1,3,5) 가로 보정 */
+      --overlay-metric-right-col-offset-x: 0px;
+      /* 스파이더 그래프 오버레이 박스 (배경 육각형 영역에 맞춤) */
+      --overlay-spider-size: calc(28mm * 1.2);
+      --overlay-spider-top: calc(29% - 12px);
+      --overlay-spider-center-x: 50%;
+      /* 평균·참가자 이름: absolute 로 고정 (표시 여부·크기가 서로 밀지 않음) — 카드 기준 위에서의 위치 */
+      --overlay-avg-top: calc(26% - 28px);
+      --overlay-name-top: calc(40% - 115px);
+      --overlay-avg-translate-x: -2px;
+      --overlay-name-translate-x: -5px;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      margin: 0;
+      padding: 0;
+      background: #1a1a1a;
+      font-family: "Inter", "Noto Sans KR", system-ui, sans-serif;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+
+    .workspace {
+      display: flex;
+      flex-direction: row;
+      flex-wrap: wrap;
+      align-items: flex-start;
+      justify-content: center;
+      gap: 24px 32px;
+      padding: 24px 20px 48px;
+      max-width: 1680px;
+      margin: 0 auto;
+    }
+
+    .panel-inputs {
+      flex: 1 1 300px;
+      min-width: 280px;
+      max-width: 440px;
+      padding: 4px 8px 20px 0;
+    }
+
+    /* 등록 리스트 (측정값 입력 오른쪽) */
+    .panel-roster {
+      flex: 1 1 300px;
+      min-width: 280px;
+      max-width: 360px;
+      background: #fafafa;
+      border-radius: 12px;
+      padding: 18px 16px 20px;
+      box-shadow: 0 4px 24px rgba(0, 0, 0, 0.2);
+      border: 1px solid #e8e8e8;
+    }
+
+    .roster-title {
+      margin: 0 0 14px;
+      text-align: center;
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: #333;
+    }
+
+    .roster-stats {
+      margin: 0 0 14px;
+      font-size: 13px;
+      color: #555;
+      line-height: 1.5;
+    }
+
+    .roster-stats .n-total {
+      font-weight: 700;
+      color: #333;
+    }
+
+    .roster-stats .n-men {
+      font-weight: 700;
+      color: #1565c0;
+    }
+
+    .roster-stats .n-women {
+      font-weight: 700;
+      color: #c2185b;
+    }
+
+    .roster-name-input {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid #ccc;
+      border-radius: 8px;
+      font-size: 14px;
+      margin-bottom: 10px;
+      background: #fff;
+      color: #222;
+    }
+
+    .roster-name-input:focus {
+      outline: none;
+      border-color: #6d4ba8;
+      box-shadow: 0 0 0 2px rgba(109, 75, 168, 0.2);
+    }
+
+    .roster-team-form {
+      margin-bottom: 10px;
+    }
+
+    .roster-member-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .roster-member-input {
+      width: 100%;
+      padding: 9px 10px;
+      border: 1px solid #ccc;
+      border-radius: 8px;
+      font-size: 13px;
+      background: #fff;
+      color: #222;
+    }
+
+    .roster-member-input:nth-child(1),
+    .roster-member-input:nth-child(2) {
+      border-left: 3px solid #1976d2;
+    }
+
+    .roster-member-input:nth-child(3),
+    .roster-member-input:nth-child(4) {
+      border-left: 3px solid #c2185b;
+    }
+
+    .roster-member-input:focus {
+      outline: none;
+      border-color: #6d4ba8;
+      box-shadow: 0 0 0 2px rgba(109, 75, 168, 0.2);
+    }
+
+    .roster-session-pick {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 12px;
+      flex-wrap: wrap;
+    }
+
+    .roster-session-pick .roster-label {
+      font-size: 12px;
+      color: #666;
+      width: 100%;
+      margin-bottom: -4px;
+    }
+
+    .roster-session-pick button {
+      flex: 1;
+      padding: 7px 10px;
+      border-radius: 8px;
+      border: 2px solid #d1c4e9;
+      background: #fff;
+      color: #5e35b1;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .roster-session-pick button.is-active {
+      background: #6d4ba8;
+      color: #fff;
+      border-color: #6d4ba8;
+    }
+
+    .roster-btn-register {
+      width: 100%;
+      padding: 11px;
+      margin-bottom: 8px;
+      border: none;
+      border-radius: 8px;
+      background: #6d4ba8;
+      color: #fff;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .roster-btn-register:hover {
+      background: #5d3d91;
+    }
+
+    .roster-btn-clear {
+      width: 100%;
+      padding: 11px;
+      margin-bottom: 14px;
+      border: none;
+      border-radius: 8px;
+      background: #e53935;
+      color: #fff;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .roster-btn-clear:hover {
+      background: #c62828;
+    }
+
+    .roster-list {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      max-height: 320px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .roster-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: 1px solid rgba(0, 0, 0, 0.08);
+      cursor: pointer;
+      text-align: left;
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    .roster-item--m {
+      background: #e3f2fd;
+      color: #0d47a1;
+    }
+
+    .roster-item--f {
+      background: #fce4ec;
+      color: #880e4f;
+    }
+
+    .roster-item__text {
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .roster-item__avg {
+      font-size: 12px;
+      font-weight: 700;
+      flex-shrink: 0;
+      opacity: 0.95;
+    }
+
+    .roster-item--m .roster-item__avg {
+      color: #0d47a1;
+    }
+
+    .roster-item--f .roster-item__avg {
+      color: #ad1457;
+    }
+
+    .roster-item__session {
+      font-size: 10px;
+      font-weight: 600;
+      opacity: 0.75;
+      flex-shrink: 0;
+    }
+
+    .roster-item__saved-at {
+      font-size: 11px;
+      font-weight: 500;
+      opacity: 0.78;
+      flex-shrink: 0;
+      white-space: nowrap;
+    }
+
+    .roster-item__remove {
+      flex-shrink: 0;
+      width: 28px;
+      height: 28px;
+      border: none;
+      border-radius: 6px;
+      background: transparent;
+      color: #e53935;
+      font-size: 18px;
+      line-height: 1;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .roster-item__remove:hover {
+      background: rgba(229, 57, 53, 0.12);
+    }
+
+    .roster-item__edit {
+      flex-shrink: 0;
+      width: 28px;
+      height: 28px;
+      border: none;
+      border-radius: 6px;
+      background: transparent;
+      color: #5e35b1;
+      font-size: 14px;
+      line-height: 1;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .roster-item__edit:hover {
+      background: rgba(94, 53, 177, 0.14);
+    }
+
+    .roster-item--editing {
+      cursor: default;
+      background: #f3edff;
+      color: #311b92;
+    }
+
+    .roster-edit-input {
+      flex: 1;
+      min-width: 0;
+      height: 30px;
+      padding: 0 8px;
+      border: 1px solid rgba(0, 0, 0, 0.18);
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 600;
+      background: #fff;
+      color: #222;
+    }
+
+    .roster-gender-toggle {
+      flex-shrink: 0;
+      display: inline-flex;
+      border: 1px solid rgba(0, 0, 0, 0.18);
+      border-radius: 6px;
+      overflow: hidden;
+      background: #fff;
+    }
+
+    .roster-gender-toggle__btn {
+      border: none;
+      background: #fff;
+      color: #555;
+      font-size: 12px;
+      font-weight: 700;
+      width: 28px;
+      height: 30px;
+      cursor: pointer;
+    }
+
+    .roster-gender-toggle__btn + .roster-gender-toggle__btn {
+      border-left: 1px solid rgba(0, 0, 0, 0.12);
+    }
+
+    .roster-gender-toggle__btn.is-active {
+      background: #5e35b1;
+      color: #fff;
+    }
+
+    .roster-gender-toggle__btn.is-disabled {
+      opacity: 0.35;
+      cursor: not-allowed;
+    }
+
+    .roster-edit-btn {
+      flex-shrink: 0;
+      height: 30px;
+      padding: 0 10px;
+      border: none;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .roster-edit-btn--save {
+      background: #5e35b1;
+      color: #fff;
+    }
+
+    .roster-edit-btn--cancel {
+      background: rgba(0, 0, 0, 0.08);
+      color: #555;
+    }
+
+    .roster-add-row {
+      list-style: none;
+      padding: 9px 12px;
+      border-radius: 10px;
+      border: 1px dashed rgba(94, 53, 177, 0.45);
+      color: #5e35b1;
+      font-size: 12px;
+      font-weight: 700;
+      text-align: center;
+      cursor: pointer;
+      background: rgba(94, 53, 177, 0.05);
+    }
+
+    .roster-add-row:hover {
+      background: rgba(94, 53, 177, 0.12);
+    }
+
+    .roster-empty {
+      text-align: center;
+      color: #999;
+      font-size: 13px;
+      padding: 20px 8px;
+    }
+
+    .roster-team-header {
+      list-style: none;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: 10px 0 4px;
+      padding: 8px 10px;
+      border-radius: 6px;
+      background: #ede7f6;
+      border-left: 3px solid #6d4ba8;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .roster-team-header:hover {
+      background: #e1d5f5;
+    }
+
+    .roster-team-header:first-child {
+      margin-top: 0;
+    }
+
+    .roster-team-header__toggle {
+      font-size: 9px;
+      color: #6d4ba8;
+      flex-shrink: 0;
+    }
+
+    .roster-team-header__title {
+      font-size: 12px;
+      font-weight: 700;
+      color: #4527a0;
+      flex: 1;
+    }
+
+    .roster-team-header__count {
+      font-size: 11px;
+      font-weight: 600;
+      color: #6d4ba8;
+      white-space: nowrap;
+    }
+
+    .roster-team-header__remove {
+      flex-shrink: 0;
+      width: 26px;
+      height: 26px;
+      border: none;
+      border-radius: 6px;
+      background: transparent;
+      color: #e53935;
+      font-size: 18px;
+      line-height: 1;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .roster-team-header__remove:hover {
+      background: rgba(229, 57, 53, 0.14);
+    }
+
+    .panel-inputs h1 {
+      color: #e0e0e0;
+      font-size: 1.1rem;
+      font-weight: 600;
+      margin: 0 0 16px;
+    }
+
+    .field {
+      margin-bottom: 12px;
+    }
+
+    .field label {
+      display: block;
+      color: #aaa;
+      font-size: 12px;
+      margin-bottom: 4px;
+    }
+
+    .field input[type="text"],
+    .field input[type="number"] {
+      width: 100%;
+      padding: 8px 10px;
+      border: 1px solid #444;
+      border-radius: 6px;
+      background: #2a2a2a;
+      color: #eee;
+      font-size: 14px;
+    }
+
+    .metrics-form h2 {
+      color: #bbb;
+      font-size: 13px;
+      font-weight: 600;
+      margin: 20px 0 10px;
+    }
+
+    .metric-row {
+      display: grid;
+      grid-template-columns: 1fr 80px;
+      gap: 8px;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+
+    .metric-row input {
+      padding: 6px 8px;
+      border: 1px solid #444;
+      border-radius: 6px;
+      background: #2a2a2a;
+      color: #eee;
+      font-size: 13px;
+    }
+
+    .metric-row.hdr {
+      font-size: 11px;
+      color: #fff;
+      margin-bottom: 4px;
+    }
+
+    .actions {
+      margin-top: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .btn-print {
+      padding: 12px 20px;
+      font-size: 15px;
+      font-weight: 600;
+      color: #001a1a;
+      background: linear-gradient(180deg, #00f5ff, #00c8d4);
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+
+    .btn-print:hover {
+      filter: brightness(1.05);
+    }
+
+    .btn-save-record {
+      padding: 12px 20px;
+      font-size: 15px;
+      font-weight: 600;
+      color: #00e5ff;
+      background: transparent;
+      border: 2px solid rgba(0, 229, 255, 0.65);
+      border-radius: 8px;
+      cursor: pointer;
+    }
+
+    .btn-save-record:hover {
+      background: rgba(0, 229, 255, 0.12);
+      border-color: #00e5ff;
+    }
+
+    .save-record-feedback {
+      margin: 0;
+      font-size: 13px;
+      color: #81c784;
+      min-height: 1.2em;
+    }
+
+    .hint {
+      font-size: 12px;
+      color: #888;
+      line-height: 1.5;
+    }
+
+    .hint strong {
+      color: #ccc;
+    }
+
+    .preview-wrap {
+      flex: 0 0 auto;
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      padding: 0;
+    }
+
+    /* scale() 은 레이아웃 폭을 키우지 않아 옆 패널과 겹침 → 확대 후 크기만큼 영역 확보 */
+    .card-preview-frame {
+      width: calc(54mm * var(--card-preview-scale));
+      height: calc(86mm * var(--card-preview-scale));
+      flex-shrink: 0;
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+    }
+
+    .card {
+      position: relative;
+      width: 54mm;
+      height: 86mm;
+      background-color: #000;
+      background-image: var(--card-bg-image);
+      background-size: 100% 100%;
+      background-position: center;
+      background-repeat: no-repeat;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+      transform-origin: top center;
+      transform: scale(var(--card-preview-scale));
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+    }
+
+    /* 배경 위에 입력 기록 표시 (위치는 템플릿에 맞게 조정) */
+    .card-overlay {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      padding: 19% 5.5% 20% 5.5%;
+      pointer-events: none;
+      font-weight: 600;
+      overflow: visible;
+    }
+
+    .overlay-avg-hero {
+      position: absolute;
+      left: 5.5%;
+      right: 5.5%;
+      top: var(--overlay-avg-top);
+      width: auto;
+      z-index: 2;
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+      overflow: visible;
+      margin: 0;
+      pointer-events: none;
+      transform: translateX(var(--overlay-avg-translate-x));
+    }
+
+    .overlay-avg-hero[hidden] {
+      display: none !important;
+    }
+
+    .overlay-avg-hero__scale {
+      display: inline-block;
+      transform: scaleX(calc(var(--overlay-avg-scale-x) * 0.63));
+      transform-origin: center center;
+    }
+
+    .overlay-avg-hero__text {
+      display: block;
+      font-family: "NeuePlak-SemiBold", "Inter", "Noto Sans KR", system-ui, sans-serif;
+      font-weight: normal;
+      color: var(--cyan);
+      font-size: var(--overlay-avg-font-size);
+      line-height: 1;
+      letter-spacing: var(--overlay-avg-tracking);
+      white-space: nowrap;
+    }
+
+    /* PERFORMANCE LAB 과 같은 밴드 — 이름 왼쪽 (평균과 독립된 좌표) */
+    .overlay-namebar {
+      position: absolute;
+      left: 5.5%;
+      right: 5.5%;
+      top: var(--overlay-name-top);
+      width: auto;
+      z-index: 3;
+      display: flex;
+      align-items: center;
+      justify-content: flex-start;
+      margin: 0;
+      overflow: visible;
+      min-height: calc(
+        var(--overlay-banner-font-size) * var(--overlay-name-size-scale) * var(--overlay-banner-line-height) *
+          var(--overlay-name-stretch-y)
+      );
+      pointer-events: none;
+      transform: translateX(var(--overlay-name-translate-x));
+    }
+
+    .overlay-name {
+      flex: 1;
+      min-width: 0;
+      text-align: left;
+      font-family: "NeuePlak-SemiBold", "Inter", "Noto Sans KR", system-ui, sans-serif;
+      font-weight: normal;
+      color: #ffffff;
+      font-size: calc(var(--overlay-banner-font-size) * var(--overlay-name-size-scale));
+      line-height: var(--overlay-banner-line-height);
+      letter-spacing: var(--overlay-name-tracking);
+      white-space: nowrap;
+      /* scaleY(1.4) 시 overflow:hidden 이 글자 상·하를 잘라내므로 생략 없음 */
+      transform: scaleY(var(--overlay-name-stretch-y));
+      transform-origin: left center;
+    }
+
+    .overlay-spider {
+      position: absolute;
+      width: var(--overlay-spider-size);
+      height: var(--overlay-spider-size);
+      left: var(--overlay-spider-center-x);
+      top: var(--overlay-spider-top);
+      transform: translateX(-50%);
+      z-index: 2;
+      pointer-events: none;
+      overflow: visible;
+    }
+
+    .overlay-spider .spider-ring {
+      fill: none;
+      stroke: rgba(255, 255, 255, 0.3);
+      stroke-width: 0.9;
+    }
+
+    .overlay-spider .spider-ring--outer {
+      stroke: rgba(255, 255, 255, 0.75);
+      stroke-width: 1.2;
+    }
+
+    .overlay-spider .spider-axis {
+      stroke: rgba(255, 255, 255, 0.22);
+      stroke-width: 0.8;
+    }
+
+    .overlay-spider polygon {
+      fill: rgba(3, 255, 51, 0.3);
+      stroke: #03ff33;
+      stroke-width: 0.75;
+    }
+
+    .overlay-spider .spider-badge {
+      fill: #0f0f0f;
+      stroke: rgba(255, 255, 255, 0.2);
+      stroke-width: 1;
+    }
+
+    .overlay-spider .spider-badge.spider-badge--s {
+      fill: #03ff33;
+      stroke: #03ff33;
+    }
+
+    .overlay-spider .spider-grade {
+      fill: #ffffff;
+      font-family: "NeuePlak-SemiBold", "Inter", "Noto Sans KR", system-ui, sans-serif;
+      font-size: 3.15px;
+      font-weight: normal;
+      dominant-baseline: middle;
+      alignment-baseline: middle;
+      text-anchor: middle;
+    }
+
+    .overlay-spider .spider-grade.spider-grade--s {
+      fill: #000000;
+    }
+
+    .overlay-spider .spider-grade.spider-grade--d {
+      fill: #ff9500;
+    }
+
+    .overlay-spacer {
+      flex: 1;
+      min-height: 0;
+    }
+
+    .overlay-metrics {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      grid-template-rows: repeat(3, auto);
+      grid-auto-flow: column;
+      gap: var(--overlay-metrics-gap-row) var(--overlay-metrics-gap-col);
+      line-height: 1.2;
+      align-items: start;
+    }
+
+    .overlay-metric-cell {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      justify-content: flex-start;
+      min-width: 0;
+      padding-top: var(--overlay-metric-title-reserve);
+      overflow: visible;
+    }
+
+    /* 윗줄: HANDGRIP(0), VERTICAL JUMP(1) — 좌·우 열 각각 translateX */
+    .overlay-metric-cell[data-metric-index="0"] {
+      transform: translateX(var(--overlay-metric-left-col-offset-x))
+        translateY(var(--overlay-metric-handgrip-offset-y));
+    }
+    .overlay-metric-cell[data-metric-index="1"] {
+      transform: translateX(var(--overlay-metric-right-col-offset-x))
+        translateY(var(--overlay-metric-handgrip-offset-y));
+    }
+
+    .overlay-metric-cell[data-metric-index="2"] {
+      transform: translateX(var(--overlay-metric-left-col-offset-x))
+        translateY(var(--overlay-metric-index2-offset-y));
+    }
+    .overlay-metric-cell[data-metric-index="3"] {
+      transform: translateX(var(--overlay-metric-right-col-offset-x))
+        translateY(var(--overlay-metric-index2-offset-y));
+    }
+
+    .overlay-metric-cell[data-metric-index="4"] {
+      transform: translateX(var(--overlay-metric-left-col-offset-x))
+        translateY(var(--overlay-metric-index4-offset-y));
+    }
+    .overlay-metric-cell[data-metric-index="5"] {
+      transform: translateX(var(--overlay-metric-right-col-offset-x))
+        translateY(var(--overlay-metric-index4-offset-y));
+    }
+
+    /* 평균과 같은 폰트·트래킹, 크기·가로 스트레치만 --overlay-metric-size-factor 배 */
+    /* scaleX 후에도 레이아웃 폭은 좁게 남으므로 max-width/overflow 로 자르면 6·8·9 등 오른쪽 곡선이 잘림 */
+    .overlay-metric-value__scale {
+      display: inline-block;
+      max-width: none;
+      transform: scaleX(
+        calc(
+          var(--overlay-avg-scale-x) * var(--overlay-metric-size-factor) * var(--overlay-metric-stretch-x)
+        )
+      );
+      transform-origin: left center;
+    }
+
+    .overlay-metric-value {
+      display: block;
+      font-family: "NeuePlak-SemiBold", "Inter", "Noto Sans KR", system-ui, sans-serif;
+      font-weight: normal;
+      color: var(--cyan);
+      font-size: calc(var(--overlay-avg-font-size) * var(--overlay-metric-size-factor));
+      line-height: 1;
+      letter-spacing: var(--overlay-avg-tracking);
+      white-space: nowrap;
+      overflow: visible;
+      text-align: left;
+      max-width: none;
+    }
+
+    @media print {
+      .no-print {
+        display: none !important;
+      }
+
+      body {
+        background: #000;
+      }
+
+      .workspace {
+        display: block;
+        padding: 0;
+        margin: 0;
+        max-width: none;
+      }
+
+      .preview-wrap {
+        padding: 0;
+        min-height: auto;
+        display: flex;
+        justify-content: center;
+      }
+
+      .card-preview-frame {
+        width: 54mm;
+        height: 86mm;
+      }
+
+      .card {
+        transform: none;
+        box-shadow: none;
+      }
+
+      @page {
+        size: 54mm 86mm;
+        margin: 0;
+      }
+    }
+
+    @media (max-width: 900px) {
+      .workspace {
+        flex-direction: column;
+        align-items: center;
+      }
+
+      .panel-inputs {
+        max-width: 520px;
+        padding: 0 16px 24px;
+      }
+
+      .panel-roster {
+        max-width: 520px;
+        width: 100%;
+      }
+    }
+
+    /* 좌·우 측정 모달 (NORDIC HAMSTRING 등) */
+    .metric-modal {
+      position: fixed;
+      inset: 0;
+      z-index: 1000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+    }
+
+    .metric-modal[hidden] {
+      display: none !important;
+    }
+
+    .metric-modal__backdrop {
+      position: absolute;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.55);
+    }
+
+    .metric-modal__dialog {
+      position: relative;
+      width: 100%;
+      max-width: 380px;
+      background: #fff;
+      border-radius: 14px;
+      padding: 22px 20px 18px;
+      box-shadow: 0 16px 48px rgba(0, 0, 0, 0.35);
+    }
+
+    .metric-modal__title {
+      margin: 0 0 18px;
+      text-align: center;
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: #1b7f4c;
+      letter-spacing: 0.02em;
+    }
+
+    .metric-modal__field {
+      margin-bottom: 14px;
+    }
+
+    .metric-modal__field label {
+      display: block;
+      font-size: 13px;
+      color: #555;
+      margin-bottom: 6px;
+      font-weight: 500;
+    }
+
+    .metric-modal__field input {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid #ccc;
+      border-radius: 8px;
+      font-size: 15px;
+      background: #fafafa;
+      color: #222;
+    }
+
+    .metric-modal__field input:focus {
+      border-color: #1b7f4c;
+      outline: none;
+      box-shadow: 0 0 0 2px rgba(27, 127, 76, 0.2);
+    }
+
+    .metric-modal__actions {
+      display: flex;
+      gap: 10px;
+    }
+
+    .metric-modal__actions button {
+      flex: 1;
+      padding: 11px 14px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+    }
+
+    .metric-modal__btn-cancel {
+      background: #e8e8e8;
+      color: #222;
+    }
+
+    .metric-modal__btn-cancel:hover {
+      background: #ddd;
+    }
+
+    .metric-modal__btn-apply {
+      background: #1b7f4c;
+      color: #fff;
+    }
+
+    .metric-modal__btn-apply:hover {
+      background: #156b3f;
+    }
+
+    .metric-modal__btn-apply:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+
+    .metric-modal__fieldset {
+      border: none;
+      margin: 0 0 16px;
+      padding: 0;
+    }
+
+    .metric-modal__legend {
+      font-size: 13px;
+      font-weight: 600;
+      color: #444;
+      margin-bottom: 10px;
+    }
+
+    .metric-modal__radio-line,
+    .metric-modal__check-line {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      margin-bottom: 8px;
+      font-size: 14px;
+      color: #333;
+      cursor: pointer;
+      line-height: 1.35;
+    }
+
+    .metric-modal__radio-line input,
+    .metric-modal__check-line input {
+      margin-top: 3px;
+      flex-shrink: 0;
+    }
+
+    .btn-csv-export {
+      padding: 12px 20px;
+      font-size: 15px;
+      font-weight: 600;
+      color: #aed581;
+      background: transparent;
+      border: 2px solid rgba(174, 213, 129, 0.75);
+      border-radius: 8px;
+      cursor: pointer;
+    }
+
+    .btn-csv-export:hover {
+      background: rgba(174, 213, 129, 0.14);
+      border-color: #aed581;
+    }
+
+    /* ===== 실시간 동기화 상태 배지 ===== */
+    .sync-badge {
+      position: fixed;
+      top: 10px;
+      right: 12px;
+      z-index: 50;
+      padding: 5px 10px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.2px;
+      color: #fff;
+      background: #9e9e9e;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+    }
+    .sync-badge--on { background: #2e7d32; }
+    .sync-badge--off { background: #b0830f; }
+    .sync-badge--err { background: #c62828; }
+
+    /* ===== 스테이션(포스트) 입력 모드 ===== */
+    .station-view {
+      position: fixed;
+      inset: 0;
+      z-index: 40;
+      background: #11151c;
+      color: #e8eaed;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .station-view[hidden] {
+      display: none;
+    }
+    .station-header {
+      flex-shrink: 0;
+      padding: 14px 16px 10px;
+      background: #161b24;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .station-header h1 {
+      margin: 0 0 10px;
+      font-size: 18px;
+      font-weight: 800;
+      color: #fff;
+    }
+    .station-header h1 .station-event-name { color: #03ff33; }
+    .station-picker {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-bottom: 8px;
+      align-items: center;
+    }
+    .station-picker__label {
+      font-size: 12px;
+      font-weight: 700;
+      color: #9aa3af;
+      margin-right: 4px;
+    }
+    .station-pill {
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      background: #1f2733;
+      color: #cfd4dc;
+      border-radius: 8px;
+      padding: 9px 12px;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+      min-width: 44px;
+    }
+    .station-pill.is-active {
+      background: #03ff33;
+      color: #06210b;
+      border-color: #03ff33;
+    }
+    .station-select {
+      border: 1px solid rgba(255, 255, 255, 0.22);
+      background: #1f2733;
+      color: #fff;
+      border-radius: 8px;
+      padding: 9px 12px;
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+      min-width: 180px;
+      max-width: 70vw;
+    }
+    .station-select:focus {
+      outline: none;
+      border-color: #03ff33;
+    }
+    .station-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 12px 16px 28px;
+      -webkit-overflow-scrolling: touch;
+    }
+    .station-team {
+      margin-bottom: 16px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 12px;
+      overflow: hidden;
+      background: #161b24;
+    }
+    .station-team__title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 10px 14px;
+      font-size: 15px;
+      font-weight: 800;
+      color: #fff;
+      background: #232c39;
+      border-left: 4px solid #6d4ba8;
+    }
+    .station-team__total {
+      flex-shrink: 0;
+      font-size: 20px;
+      font-weight: 800;
+      color: #03ff33;
+      font-variant-numeric: tabular-nums;
+    }
+    .station-member {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 14px;
+      border-top: 1px solid rgba(255, 255, 255, 0.06);
+    }
+    .station-member__name {
+      flex: 1;
+      min-width: 0;
+      font-size: 15px;
+      font-weight: 700;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .station-member__gender {
+      flex-shrink: 0;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 2px 7px;
+      border-radius: 6px;
+    }
+    .station-member__gender--m { background: #1c3a5e; color: #8ec5ff; }
+    .station-member__gender--f { background: #5e1c3a; color: #ff9ec5; }
+    .station-member__input {
+      flex-shrink: 0;
+      width: 130px;
+      height: 44px;
+      text-align: center;
+      font-size: 18px;
+      font-weight: 800;
+      border: 1px solid rgba(255, 255, 255, 0.22);
+      border-radius: 10px;
+      background: #0d1117;
+      color: #03ff33;
+    }
+    .station-member__input:focus {
+      outline: none;
+      border-color: #03ff33;
+      box-shadow: 0 0 0 2px rgba(3, 255, 51, 0.25);
+    }
+    .station-member__input.is-saved {
+      animation: stationSaveFlash 0.6s ease;
+    }
+    @keyframes stationSaveFlash {
+      0% { box-shadow: 0 0 0 3px rgba(3, 255, 51, 0.55); }
+      100% { box-shadow: 0 0 0 0 rgba(3, 255, 51, 0); }
+    }
+    .station-empty {
+      text-align: center;
+      color: #8a93a0;
+      font-size: 14px;
+      padding: 40px 12px;
+    }
+    .station-config-warn {
+      margin: 0 16px 10px;
+      padding: 10px 12px;
+      border-radius: 8px;
+      background: #4a2f00;
+      color: #ffd479;
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    /* ===== 랭킹 보드 (확장 디스플레이 1920×1080) ===== */
+    body.ranking-mode {
+      overflow: hidden;
+      background: #000;
+      --ranking-team-font-size: 22px;
+      --ranking-team-chars: 10;
+      --ranking-team-pad-x: 24px;
+      --ranking-team-stretch-y: 1.4;
+      --ranking-team-letter-spacing: -0.05em;
+      --ranking-team-shift-x: -150px;
+      --ranking-team-shift-y: 10px;
+      --ranking-team-text-shift-y: -3px;
+      --ranking-event-stretch-y: 3.04;
+      --ranking-event-letter-spacing: -0.05em;
+      /* 배경 TEAM RACE 라벨과 맞춘 TOTAL 헤더 크기 (1920×1080 기준) */
+      --ranking-total-header-size: 34px;
+      --ranking-total-header-stretch-y: 1.5;
+      --ranking-events-shift-x: -200px;
+      --ranking-power-extra-shift-x: -50px;
+      --ranking-vertical-extra-shift-x: -100px;
+      --ranking-cognition-extra-shift-x: -150px;
+      --ranking-strength-extra-shift-x: -200px;
+      --ranking-endurance-extra-shift-x: -250px;
+      --ranking-total-value-size: 70px;
+      --ranking-total-value-scale-x: 2.8;
+      --ranking-total-value-letter-spacing: -0.09em;
+      --ranking-total-shift-x: -250px;
+      --ranking-total-sub-value-size: 63px;
+      --ranking-total-sub-scale-factor: 0.8;
+      --ranking-total-sub-letter-spacing: -0.02em;
+      --ranking-total-sub-shift-x: -185px;
+      --ranking-rank-sub-muted-color: rgba(0, 0, 0, 0.32);
+      --ranking-row-gap: 1px;
+      --ranking-row-pad-y: 2px;
+      --ranking-content-offset-y: 50px;
+    }
+    body.ranking-mode .workspace,
+    body.ranking-mode .sync-badge,
+    body.ranking-mode .station-view {
+      display: none !important;
+    }
+    .ranking-view {
+      position: fixed;
+      inset: 0;
+      z-index: 45;
+      width: 100vw;
+      height: 100vh;
+      background-color: #000;
+      color: #fff;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      font-family: "NeuePlak-SemiBold", "Noto Sans KR", "Inter", sans-serif;
+    }
+    /* CSS background 대신 img — 1920×1080 픽셀 매칭·캐시 갱신에 유리 */
+    .ranking-bg-img {
+      position: absolute;
+      inset: 0;
+      z-index: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: fill;
+      object-position: center;
+      pointer-events: none;
+      user-select: none;
+    }
+    @media (min-width: 1920px) and (min-height: 1080px) {
+      .ranking-view {
+        width: 1920px;
+        height: 1080px;
+        left: 50%;
+        top: 50%;
+        right: auto;
+        bottom: auto;
+        transform: translate(-50%, -50%);
+      }
+      .ranking-bg-img {
+        width: 1920px;
+        height: 1080px;
+      }
+    }
+    .ranking-body {
+      position: relative;
+      z-index: 1;
+    }
+    .ranking-view[hidden] {
+      display: none;
+    }
+    .ranking-body {
+      flex: 1;
+      min-height: 0;
+      padding: calc(40vh + var(--ranking-content-offset-y)) 40px 12px;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-start;
+    }
+    .ranking-table {
+      width: 100%;
+      max-width: 1856px;
+      margin: 0 auto;
+      border-collapse: separate;
+      border-spacing: 0 var(--ranking-row-gap);
+      table-layout: fixed;
+    }
+    .ranking-table thead th {
+      padding: 4px 6px;
+      font-size: 13px;
+      font-weight: 700;
+      color: rgba(255, 255, 255, 0.55);
+      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.65);
+      text-align: center;
+      letter-spacing: 0.06em;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .ranking-table thead th.ranking-th--team,
+    .ranking-table thead th.ranking-th--rank {
+      text-align: left;
+    }
+    .ranking-table thead th.ranking-th--total {
+      font-family: "NeuePlak-SemiBold", "Noto Sans KR", "Inter", sans-serif;
+      font-weight: normal;
+      color: #000;
+      font-size: var(--ranking-total-header-size);
+      letter-spacing: var(--ranking-team-letter-spacing);
+      line-height: 1;
+      text-shadow: none;
+      padding: 2px 8px;
+      vertical-align: bottom;
+      overflow: visible;
+      transform: translateX(var(--ranking-total-shift-x));
+    }
+    .ranking-th--total-text {
+      display: inline-block;
+      transform: scaleY(var(--ranking-total-header-stretch-y));
+      transform-origin: center bottom;
+    }
+    .ranking-table thead th.ranking-th--event {
+      padding: 4px 1px 2px;
+      overflow: visible;
+      white-space: normal;
+      text-shadow: none;
+      transform: translateX(var(--ranking-events-shift-x));
+    }
+    .ranking-table thead th.ranking-th--event-power {
+      transform: translateX(
+        calc(var(--ranking-events-shift-x) + var(--ranking-power-extra-shift-x))
+      );
+    }
+    .ranking-table thead th.ranking-th--event-vertical {
+      transform: translateX(
+        calc(var(--ranking-events-shift-x) + var(--ranking-vertical-extra-shift-x))
+      );
+    }
+    .ranking-table thead th.ranking-th--event-cognition {
+      transform: translateX(
+        calc(var(--ranking-events-shift-x) + var(--ranking-cognition-extra-shift-x))
+      );
+    }
+    .ranking-table thead th.ranking-th--event-strength {
+      transform: translateX(
+        calc(var(--ranking-events-shift-x) + var(--ranking-strength-extra-shift-x))
+      );
+    }
+    .ranking-table thead th.ranking-th--event-endurance {
+      transform: translateX(
+        calc(var(--ranking-events-shift-x) + var(--ranking-endurance-extra-shift-x))
+      );
+    }
+    .ranking-event-title {
+      display: inline-flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 0;
+      max-width: 100%;
+      padding: 2px 0;
+      background: none;
+      text-align: center;
+      overflow: visible;
+    }
+    .ranking-event-title__en,
+    .ranking-event-title__ko {
+      display: block;
+      font-family: "NeuePlak-SemiBold", "Noto Sans KR", "Inter", sans-serif;
+      color: #000;
+      font-weight: normal;
+      letter-spacing: var(--ranking-team-letter-spacing);
+      line-height: 1.1;
+      transform: scaleY(var(--ranking-team-stretch-y));
+    }
+    .ranking-event-title__en {
+      font-size: 21.6px;
+      text-transform: uppercase;
+      transform-origin: center top;
+      margin-bottom: calc(5px + 21.6px * (var(--ranking-team-stretch-y) - 1) * 0.42);
+    }
+    .ranking-event-title__ko {
+      font-size: 14.58px;
+      word-break: keep-all;
+      transform-origin: center top;
+      margin-top: calc(2px + 14.58px * (var(--ranking-team-stretch-y) - 1) * 0.22);
+    }
+    .ranking-row td {
+      padding: var(--ranking-row-pad-y) 6px;
+      font-size: 20px;
+      font-weight: 700;
+      text-align: center;
+      vertical-align: middle;
+      background: transparent;
+      border: none;
+      text-shadow: 0 1px 3px rgba(0, 0, 0, 0.75);
+      -webkit-font-smoothing: antialiased;
+    }
+    .ranking-row__rank {
+      width: 72px;
+      font-size: 28px;
+      font-weight: 800;
+      text-align: center;
+      color: #000;
+      text-shadow: none;
+      transform: translateX(-80px);
+    }
+    .ranking-row__team {
+      text-align: center;
+      padding: var(--ranking-row-pad-y) 8px !important;
+      text-shadow: none;
+      vertical-align: middle;
+      overflow: visible;
+      transform: translate(var(--ranking-team-shift-x), var(--ranking-team-shift-y));
+    }
+    .ranking-team-label {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      box-sizing: border-box;
+      width: calc(
+        var(--ranking-team-chars) * var(--ranking-team-font-size) + var(--ranking-team-pad-x) * 2
+      );
+      min-width: calc(
+        var(--ranking-team-chars) * var(--ranking-team-font-size) + var(--ranking-team-pad-x) * 2
+      );
+      max-width: 100%;
+      min-height: calc(
+        var(--ranking-team-font-size) * var(--ranking-team-stretch-y) + 10px
+      );
+      padding: calc(
+          6px + var(--ranking-team-font-size) * (var(--ranking-team-stretch-y) - 1) * 0.4
+        )
+        var(--ranking-team-pad-x);
+      background: #000;
+      border: none;
+      overflow: hidden;
+    }
+    .ranking-team-label__text {
+      display: inline-block;
+      font-family: "NeuePlak-SemiBold", "Noto Sans KR", "Inter", sans-serif;
+      color: #03ff33;
+      font-size: var(--ranking-team-font-size);
+      font-weight: normal;
+      letter-spacing: var(--ranking-team-letter-spacing);
+      text-transform: uppercase;
+      text-align: center;
+      line-height: 1.1;
+      transform: scaleY(var(--ranking-team-stretch-y))
+        translateY(var(--ranking-team-text-shift-y));
+      transform-origin: center center;
+      overflow: visible;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      max-width: 100%;
+    }
+    .ranking-row--pending .ranking-team-label {
+      opacity: 0.55;
+    }
+    /* 3~6위: 순위·팀명·테두리·종목·TOTAL 동일 흐릿한 회색 */
+    .ranking-row--rank-sub .ranking-row__team {
+      text-shadow: none;
+    }
+    .ranking-row--rank-sub .ranking-team-label {
+      background: transparent;
+      border: 2px solid var(--ranking-rank-sub-muted-color);
+      overflow: visible;
+    }
+    .ranking-row--rank-sub .ranking-team-label__text {
+      color: var(--ranking-rank-sub-muted-color);
+      text-shadow: none;
+    }
+    .ranking-row--rank-sub .ranking-event-value {
+      color: var(--ranking-rank-sub-muted-color);
+      text-shadow: none;
+    }
+    .ranking-row--rank-sub .ranking-row__event.is-empty .ranking-event-value {
+      color: var(--ranking-rank-sub-muted-color);
+      opacity: 0.45;
+    }
+    .ranking-row__badge--spacer {
+      visibility: hidden;
+      pointer-events: none;
+    }
+    .ranking-row__event {
+      padding: 4px 2px !important;
+      font-size: 17px;
+      color: rgba(3, 255, 51, 0.9);
+      vertical-align: middle;
+      overflow: visible;
+      transform: translateX(var(--ranking-events-shift-x));
+    }
+    .ranking-event-value {
+      display: inline-block;
+      font-family: "NeuePlak-SemiBold", "Noto Sans KR", "Inter", sans-serif;
+      font-weight: normal;
+      font-size: 17px;
+      letter-spacing: var(--ranking-event-letter-spacing);
+      line-height: 1;
+      text-shadow: 0 1px 3px rgba(0, 0, 0, 0.75);
+      transform: scaleY(var(--ranking-event-stretch-y));
+      transform-origin: center center;
+      font-variant-numeric: tabular-nums;
+      color: rgba(3, 255, 51, 0.9);
+    }
+    .ranking-row__event.is-empty .ranking-event-value {
+      color: rgba(255, 255, 255, 0.18);
+    }
+    .ranking-row__event.ranking-row__event--power .ranking-event-value {
+      transform: translateX(var(--ranking-power-extra-shift-x))
+        scaleY(var(--ranking-event-stretch-y));
+      transform-origin: center center;
+    }
+    .ranking-row__event.ranking-row__event--vertical .ranking-event-value {
+      transform: translateX(var(--ranking-vertical-extra-shift-x))
+        scaleY(var(--ranking-event-stretch-y));
+      transform-origin: center center;
+    }
+    .ranking-row__event.ranking-row__event--cognition .ranking-event-value {
+      transform: translateX(var(--ranking-cognition-extra-shift-x))
+        scaleY(var(--ranking-event-stretch-y));
+      transform-origin: center center;
+    }
+    .ranking-row__event.ranking-row__event--strength .ranking-event-value {
+      transform: translateX(var(--ranking-strength-extra-shift-x))
+        scaleY(var(--ranking-event-stretch-y));
+      transform-origin: center center;
+    }
+    .ranking-row__event.ranking-row__event--endurance .ranking-event-value {
+      transform: translateX(var(--ranking-endurance-extra-shift-x))
+        scaleY(var(--ranking-event-stretch-y));
+      transform-origin: center center;
+    }
+    .ranking-row__total {
+      padding: var(--ranking-row-pad-y) 8px !important;
+      text-shadow: none !important;
+      vertical-align: middle;
+      overflow: visible;
+    }
+    .ranking-total-value {
+      display: inline-block;
+      font-family: "NeuePlak-SemiBold", "Noto Sans KR", "Inter", sans-serif;
+      font-size: var(--ranking-total-value-size);
+      font-weight: normal;
+      color: #000;
+      line-height: 1;
+      letter-spacing: var(--ranking-total-value-letter-spacing);
+      text-shadow: none;
+      transform: translateX(var(--ranking-total-shift-x))
+        scaleX(var(--ranking-total-value-scale-x));
+      transform-origin: center center;
+      font-variant-numeric: tabular-nums;
+    }
+    .ranking-row--rank-sub .ranking-total-value {
+      font-size: var(--ranking-total-sub-value-size);
+      letter-spacing: var(--ranking-total-sub-letter-spacing);
+      color: var(--ranking-rank-sub-muted-color);
+      transform: translateX(var(--ranking-total-sub-shift-x))
+        scaleX(
+          calc(
+            var(--ranking-total-value-scale-x) * var(--ranking-total-sub-scale-factor)
+          )
+        );
+    }
+    .ranking-row__badge {
+      display: inline-block;
+      margin-left: 10px;
+      padding: 3px 10px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.06em;
+      vertical-align: middle;
+      background: #03ff33;
+      color: #000;
+      border: none;
+    }
+    .ranking-row--p1 .ranking-row__rank,
+    .ranking-row--p2 .ranking-row__rank {
+      color: #000;
+    }
+    .ranking-row--pending td {
+      background: rgba(255, 255, 255, 0.02);
+      opacity: 0.55;
+    }
+    .ranking-row--pending .ranking-row__rank {
+      font-size: 18px;
+      color: #000;
+    }
+    .ranking-row--pending .ranking-total-value {
+      font-size: 38px;
+      color: #000;
+      opacity: 0.45;
+    }
+    .ranking-row.ranking-row--rank-sub td.ranking-row__rank,
+    .ranking-row.ranking-row--rank-sub .ranking-row__rank-num {
+      color: var(--ranking-rank-sub-muted-color);
+      text-shadow: none;
+    }
+    .ranking-empty {
+      text-align: center;
+      padding: 48px 16px;
+      font-size: 20px;
+      color: rgba(255, 255, 255, 0.4);
+    }
+    .ranking-col-rank { width: 72px; }
+    .ranking-col-team { width: 24%; }
+    .ranking-col-event { width: 9%; }
+    .ranking-col-total { width: 14%; }
+  </style>
+</head>
+<body>
+  <div class="workspace">
+    <div class="preview-wrap">
+      <div class="card-preview-frame">
+        <div class="card" id="card">
+          <div class="card-overlay">
+            <div class="overlay-avg-hero" id="ovAvgHero" hidden>
+              <div class="overlay-avg-hero__scale">
+                <span class="overlay-avg-hero__text" id="ovAvgValueHero"></span>
+              </div>
+            </div>
+            <div class="overlay-namebar">
+              <div class="overlay-name" id="ovName"></div>
+            </div>
+            <svg class="overlay-spider" id="ovSpider" viewBox="0 0 100 100" aria-hidden="true"></svg>
+            <div class="overlay-spacer"></div>
+            <div class="overlay-metrics" id="ovMetrics"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <aside class="panel-inputs no-print">
+      <h1>측정값 입력</h1>
+      <div class="field">
+        <label for="participantName">팀명</label>
+        <input type="text" id="participantName" placeholder="이름" autocomplete="name" />
+      </div>
+      <div class="metrics-form">
+        <h2>측정 기록 (6종목)</h2>
+        <div class="metric-row hdr">
+          <span>종목명</span>
+          <span>기록</span>
+        </div>
+        <div id="metricRows"></div>
+      </div>
+      <div class="field">
+        <label for="avgManual">총 시간 (6종목 기록 합산, 자동 계산). 6종목이 모두 입력되면 MM:SS.ss 로 표시됩니다.</label>
+        <input type="text" id="avgManual" placeholder="00:00.00" inputmode="decimal" readonly />
+      </div>
+      <div class="actions">
+        <button type="button" class="btn-print" id="btnPrint">카드 출력</button>
+        <button type="button" class="btn-save-record" id="btnSaveRecord">기록 저장</button>
+        <button type="button" class="btn-csv-export" id="btnCsvExport">CSV로 저장</button>
+        <p class="save-record-feedback" id="saveRecordFeedback" role="status" aria-live="polite" hidden></p>
+        <p class="hint">
+          <strong>IX-R7000</strong>으로 바로 보내려면 macOS/Windows 인쇄 창에서 프린터를
+          <strong>Canon IX-R7000</strong>(또는 등록한 이름)으로 선택한 뒤 인쇄하세요.
+          웹 페이지는 보안상 특정 프린터만 자동 지정할 수 없습니다.
+          배경·색이 빠지면 인쇄 설정에서 <strong>배경 그래픽</strong>을 켜 주세요.
+        </p>
+      </div>
+    </aside>
+
+    <aside class="panel-roster no-print">
+      <h2 class="roster-title">등록 리스트</h2>
+      <p class="roster-stats" id="rosterStats"></p>
+      <div class="roster-session-pick" role="group" aria-label="등록 회차">
+        <span class="roster-label">등록 회차</span>
+        <button type="button" class="is-active" data-reg-session="1">1회차</button>
+        <button type="button" data-reg-session="2">2회차</button>
+        <button type="button" data-reg-session="3">3회차</button>
+        <button type="button" data-reg-session="4">4회차</button>
+        <button type="button" data-reg-session="5">5회차</button>
+        <button type="button" data-reg-session="6">6회차</button>
+      </div>
+      <div class="roster-team-form">
+        <input
+          type="text"
+          class="roster-name-input"
+          id="rosterTeamName"
+          placeholder="팀명 입력"
+          autocomplete="off"
+        />
+        <div class="roster-member-grid">
+          <input type="text" class="roster-member-input" id="memberM1" placeholder="남자 1" autocomplete="name" />
+          <input type="text" class="roster-member-input" id="memberM2" placeholder="남자 2" autocomplete="name" />
+          <input type="text" class="roster-member-input" id="memberF1" placeholder="여자 1" autocomplete="name" />
+          <input type="text" class="roster-member-input" id="memberF2" placeholder="여자 2" autocomplete="name" />
+        </div>
+      </div>
+      <button type="button" class="roster-btn-register" id="btnRosterRegister">팀 등록</button>
+      <button type="button" class="roster-btn-clear" id="btnRosterClearAll">전체 삭제</button>
+      <ul class="roster-list" id="rosterList" aria-label="등록된 참가자"></ul>
+    </aside>
+  </div>
+
+  <div id="csvExportModal" class="metric-modal no-print" hidden aria-hidden="true">
+    <div class="metric-modal__backdrop" id="csvExportBackdrop" aria-hidden="true"></div>
+    <div
+      class="metric-modal__dialog"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="csvExportModalTitle"
+    >
+      <h2 id="csvExportModalTitle" class="metric-modal__title">CSV 저장 옵션</h2>
+      <fieldset class="metric-modal__fieldset">
+        <legend class="metric-modal__legend">보낼 기록</legend>
+        <label class="metric-modal__radio-line">
+          <input type="radio" name="csvScope" value="all" checked />
+          <span>전체 등록 리스트</span>
+        </label>
+        <label class="metric-modal__radio-line">
+          <input type="radio" name="csvScope" value="filtered" />
+          <span>현재 필터(회차·성별)에 맞는 목록만</span>
+        </label>
+        <label class="metric-modal__radio-line">
+          <input type="radio" name="csvScope" value="form" />
+          <span>지금 왼쪽에 입력 중인 폼만 (1행)</span>
+        </label>
+      </fieldset>
+      <div class="metric-modal__field">
+        <label for="csvFilenameInput">파일 이름 (확장자 .csv는 자동 추가)</label>
+        <input type="text" id="csvFilenameInput" autocomplete="off" placeholder="combine_records" />
+      </div>
+      <label class="metric-modal__check-line">
+        <input type="checkbox" id="csvUtf8Bom" checked />
+        <span>Excel에서 한글이 깨지지 않도록 UTF-8 BOM 붙이기</span>
+      </label>
+      <div class="metric-modal__actions">
+        <button type="button" class="metric-modal__btn-cancel" id="csvExportCancel">취소</button>
+        <button type="button" class="metric-modal__btn-apply" id="csvExportDownload">다운로드</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="sync-badge" id="syncBadge" hidden>오프라인</div>
+
+  <div class="station-view" id="stationView" hidden>
+    <div class="station-header">
+      <h1>포스트 입력 — <span class="station-event-name" id="stationEventName"></span></h1>
+      <div class="station-picker">
+        <span class="station-picker__label">종목</span>
+        <span id="stationEventPills"></span>
+      </div>
+      <div class="station-picker">
+        <span class="station-picker__label">회차</span>
+        <span id="stationSessionPills"></span>
+      </div>
+      <div class="station-picker">
+        <span class="station-picker__label">팀</span>
+        <select id="stationTeamSelect" class="station-select" aria-label="등록팀 선택"></select>
+      </div>
+    </div>
+    <div class="station-config-warn" id="stationConfigWarn" hidden>
+      Supabase 설정이 비어 있어 이 기기 안에서만 저장됩니다. 다른 기기와 공유하려면 코드 상단 SUPABASE_CONFIG를 채우세요.
+    </div>
+    <div class="station-body" id="stationList"></div>
+  </div>
+
+  <div class="ranking-view" id="rankingView" hidden>
+    <img
+      class="ranking-bg-img"
+      id="rankingBgImg"
+      src="assets/ranking-bg.png"
+      width="1920"
+      height="1080"
+      alt=""
+      decoding="sync"
+      fetchpriority="high"
+    />
+    <div class="ranking-body" id="rankingBody"></div>
+  </div>
+
+  <!-- Supabase JS v2 — 실시간 다중 기기 동기화용 -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <script>
+    /*
+     * ====== Supabase 설정 (한 번만) ======
+     * 1) Supabase 프로젝트 > Project Settings > API 에서
+     *    "Project URL" 과 "anon public" 키를 복사해 아래에 붙여넣기.
+     * 2) SQL Editor 에서 아래를 한 번 실행 (테이블 + 실시간 + 익명 읽기/쓰기 정책):
+     *
+     *    create table if not exists public.roster (
+     *      id text primary key,
+     *      name text,
+     *      gender text,
+     *      session int,
+     *      team text,
+     *      metrics jsonb,
+     *      avg_manual text,
+     *      summary_avg text,
+     *      updated_at int8
+     *    );
+     *    alter table public.roster enable row level security;
+     *    drop policy if exists "roster anon all" on public.roster;
+     *    create policy "roster anon all" on public.roster
+     *      for all to anon, authenticated using (true) with check (true);
+     *    alter publication supabase_realtime add table public.roster;
+     *
+     * 값이 비어 있으면 자동으로 이 기기 localStorage 에만 저장(기존 동작)으로 동작합니다.
+     */
+    const SUPABASE_CONFIG = {
+      url: "https://oksiyzyublplsuceawif.supabase.co",
+      anonKey: "sb_publishable_Eoc0YurmAQWZ0ZqOe4MD7g_xpm-Vu0P",
+      table: "roster",
+    };
+
+    /* 카드 그리드(배경): 1 좌상 HANDGRIP · 2 우상 VERTICAL JUMP · 3 좌중 NORDIC · 4 우중 REACTION · 5 좌하 5-10-5 · 6 우하 ZIGZAG */
+    const DEFAULT_METRICS = [
+      { label: "SHUTTLE RUN", unit: "MM:SS.ss" },
+      { label: "SLED PUSH", unit: "MM:SS.ss" },
+      { label: "BOX JUMP OVER", unit: "MM:SS.ss" },
+      { label: "REACTION INTELLIGENCE", unit: "MM:SS.ss" },
+      { label: "FARMER'S CARRY", unit: "MM:SS.ss" },
+      { label: "ROWING", unit: "MM:SS.ss" },
+    ];
+
+    const ROSTER_STORAGE_KEY = "combine_print_roster_v1";
+
+    function escapeHtml(s) {
+      const d = document.createElement("div");
+      d.textContent = s;
+      return d.innerHTML;
+    }
+
+    let rosterParticipants = [];
+    let rosterRegSession = 1;
+    /** 회차·팀당 성별 정원 (남 2 / 여 2) */
+    const TEAM_GENDER_CAP = 2;
+    /** 회차당 최대 팀 수 */
+    const MAX_TEAMS_PER_SESSION = 6;
+    /** 리스트에서 선택한 항목 id — 기록 저장 시 해당 인원 갱신에 사용 */
+    let activeRosterId = null;
+    /** 펼쳐진 팀 그룹키(`회차-팀명`) 집합 — 팀명 클릭 시 토글 */
+    let expandedTeams = new Set();
+    /** 카드에 표시할 현재 팀명 (명단에서 인원 선택 시 설정) */
+    let currentCardTeam = "";
+    /** 카드가 팀 합계 모드일 때의 회차 (null이면 팀 모드 아님) */
+    let currentCardSession = null;
+    /** 현재 인라인 수정 중인 팀원 id */
+    let editingMemberId = null;
+    /** 팀원 추가 폼이 열린 그룹키(`회차-팀명`) */
+    let addingTeamKey = null;
+
+    /* ===== Supabase 동기화 레이어 ===== */
+    let sbClient = null;
+    let dbReady = false;
+    function dbTable() {
+      return (SUPABASE_CONFIG && SUPABASE_CONFIG.table) || "roster";
+    }
+
+    function supabaseConfigured() {
+      return !!(SUPABASE_CONFIG && SUPABASE_CONFIG.url && SUPABASE_CONFIG.anonKey);
+    }
+
+    function metricsArr6(m) {
+      const arr = ["", "", "", "", "", ""];
+      if (Array.isArray(m)) {
+        for (let i = 0; i < 6; i++) arr[i] = m[i] != null ? String(m[i]) : "";
+        return arr;
+      }
+      if (m && typeof m === "object") {
+        Object.keys(m).forEach((k) => {
+          const i = Number(k);
+          if (i >= 0 && i < 6) arr[i] = m[k] != null ? String(m[k]) : "";
+        });
+      }
+      return arr;
+    }
+
+    /** 앱 참가자 객체 → Supabase row (snake_case 컬럼) */
+    function rowFromParticipant(p) {
+      return {
+        id: p.id,
+        name: p.name || "",
+        gender: p.gender === "F" ? "F" : "M",
+        session: p.session || 1,
+        team: p.team || "",
+        metrics: metricsArr6(p.metrics),
+        avg_manual: p.avgManual || "",
+        summary_avg: p.summaryAvg || "",
+        updated_at: p.updatedAt || Date.now(),
+      };
+    }
+    /** Supabase row → 앱 참가자 객체 */
+    function participantFromRow(d) {
+      return {
+        id: d.id,
+        name: d.name || "",
+        gender: d.gender === "F" ? "F" : "M",
+        session: d.session || 1,
+        team: d.team || "",
+        metrics: metricsArr6(d.metrics),
+        avgManual: d.avg_manual || "",
+        summaryAvg: d.summary_avg ? d.summary_avg : undefined,
+        updatedAt: d.updated_at || undefined,
+      };
+    }
+
+    function setSyncBadge(state, text) {
+      const el = document.getElementById("syncBadge");
+      if (!el) return;
+      el.hidden = false;
+      el.classList.remove("sync-badge--on", "sync-badge--off", "sync-badge--err");
+      el.classList.add(
+        state === "on" ? "sync-badge--on" : state === "err" ? "sync-badge--err" : "sync-badge--off"
+      );
+      el.textContent = text;
+    }
+
+    function initSupabase() {
+      if (!supabaseConfigured() || typeof supabase === "undefined" || !supabase.createClient) {
+        dbReady = false;
+        return false;
+      }
+      try {
+        sbClient = supabase.createClient(SUPABASE_CONFIG.url, SUPABASE_CONFIG.anonKey, {
+          realtime: { params: { eventsPerSecond: 10 } },
+        });
+        dbReady = true;
+        setSyncBadge("off", "연결 중…");
+        return true;
+      } catch (e) {
+        dbReady = false;
+        setSyncBadge("err", "연결 실패");
+        return false;
+      }
+    }
+
+    let lastRosterJson = "";
+    let realtimeOk = false;
+    let rosterPollTimer = null;
+
+    /** 전체 명단을 한 번 읽어와 로컬에 반영 (변경됐을 때만 onUpdate 호출) */
+    async function fetchRosterOnce(onUpdate, opts) {
+      if (!dbReady || !sbClient) return;
+      const { data, error } = await sbClient
+        .from(dbTable())
+        .select("*")
+        .order("id", { ascending: true });
+      if (error) {
+        setSyncBadge("err", "동기화 오류");
+        return;
+      }
+      const rows = data || [];
+      const json = JSON.stringify(rows);
+      rosterParticipants = rows.map(participantFromRow);
+      try {
+        localStorage.setItem(ROSTER_STORAGE_KEY, JSON.stringify(rosterParticipants));
+      } catch (_) {}
+      const changed = json !== lastRosterJson;
+      lastRosterJson = json;
+      if ((changed || (opts && opts.force)) && typeof onUpdate === "function") onUpdate();
+    }
+
+    /** 최초 1회 로드 + 실시간 구독 + 폴링 백업 (어느 쪽이든 갱신 보장) */
+    function subscribeRoster(onUpdate) {
+      if (!dbReady || !sbClient) return;
+      fetchRosterOnce(onUpdate, { force: true });
+
+      try {
+        sbClient
+          .channel("roster-changes")
+          .on(
+            "postgres_changes",
+            { event: "*", schema: "public", table: dbTable() },
+            () => fetchRosterOnce(onUpdate)
+          )
+          .subscribe((status) => {
+            if (status === "SUBSCRIBED") {
+              realtimeOk = true;
+              setSyncBadge("on", "실시간 연결됨");
+            } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
+              realtimeOk = false;
+              // 실시간이 안 되면 폴링으로 동기화되므로 '동기화 중'으로 표시
+              setSyncBadge("off", "동기화 중(주기)");
+            }
+          });
+      } catch (_) {
+        realtimeOk = false;
+      }
+
+      // 폴링 백업: 실시간이 막혀도 4초마다 최신 데이터 반영
+      if (rosterPollTimer) clearInterval(rosterPollTimer);
+      rosterPollTimer = setInterval(() => fetchRosterOnce(onUpdate), 4000);
+    }
+
+    /** 단일 참가자 저장(upsert) — 스테이션 입력·기록 저장 등 */
+    function dbUpsertParticipant(p) {
+      if (!dbReady || !sbClient || !p || !p.id) return;
+      sbClient
+        .from(dbTable())
+        .upsert(rowFromParticipant(p))
+        .then(({ error }) => { if (error) setSyncBadge("err", "저장 오류"); });
+    }
+    /** 여러 참가자 저장(upsert) — 팀 등록 등 */
+    function dbUpsertMany(ps) {
+      if (!dbReady || !sbClient || !ps || !ps.length) return;
+      sbClient
+        .from(dbTable())
+        .upsert(ps.map(rowFromParticipant))
+        .then(({ error }) => { if (error) setSyncBadge("err", "저장 오류"); });
+    }
+    /** id 목록 삭제 */
+    function dbDeleteIds(ids) {
+      if (!dbReady || !sbClient || !ids || !ids.length) return;
+      sbClient.from(dbTable()).delete().in("id", ids).then(() => {});
+    }
+    /** 전체 삭제 */
+    function dbDeleteAll() {
+      if (!dbReady || !sbClient) return;
+      sbClient.from(dbTable()).delete().neq("id", "__none__").then(() => {});
+    }
+    /** 스테이션 모드 호환용 별칭 */
+    function dbSetParticipant(p) {
+      dbUpsertParticipant(p);
+    }
+
+    function loadRoster() {
+      try {
+        const raw = localStorage.getItem(ROSTER_STORAGE_KEY);
+        if (raw) {
+          const data = JSON.parse(raw);
+          if (Array.isArray(data)) rosterParticipants = data;
+        }
+      } catch (_) {
+        rosterParticipants = [];
+      }
+    }
+
+    /** 로컬 캐시 저장 전용 (DB 반영은 각 변경 지점에서 개별 호출) */
+    function saveRoster() {
+      try {
+        localStorage.setItem(ROSTER_STORAGE_KEY, JSON.stringify(rosterParticipants));
+      } catch (_) {}
+    }
+
+    function updateRegSessionButtons() {
+      document.querySelectorAll("[data-reg-session]").forEach((btn) => {
+        btn.classList.toggle("is-active", Number(btn.dataset.regSession) === rosterRegSession);
+      });
+    }
+
+    /** 특정 회차·팀·성별의 현재 등록 인원 수 */
+    function countTeamGender(session, team, gender) {
+      return rosterParticipants.filter(
+        (p) => p.session === session && p.team === team && p.gender === gender
+      ).length;
+    }
+
+    /** 해당 회차·팀의 특정 성별에 자리가 남았는지 (excludeId 제외) */
+    function genderHasRoom(session, team, gender, excludeId) {
+      const count = rosterParticipants.filter(
+        (p) =>
+          p.session === session &&
+          p.team === team &&
+          p.gender === gender &&
+          p.id !== excludeId
+      ).length;
+      return count < TEAM_GENDER_CAP;
+    }
+
+    /** 특정 회차의 등록된 팀명 목록 (중복 제거) */
+    function teamNamesInSession(session) {
+      const set = new Set();
+      rosterParticipants.forEach((p) => {
+        if (p.session === session && p.team) set.add(p.team);
+      });
+      return Array.from(set);
+    }
+
+    function renderRosterStats() {
+      const total = rosterParticipants.length;
+      const men = rosterParticipants.filter((p) => p.gender === "M").length;
+      const women = rosterParticipants.filter((p) => p.gender === "F").length;
+      document.getElementById("rosterStats").innerHTML =
+        `전체 <span class="n-total">${total}</span>명 &nbsp; MEN <span class="n-men">${men}</span> &nbsp; WOMEN <span class="n-women">${women}</span>`;
+    }
+
+    function getFilteredRoster() {
+      return rosterParticipants.slice();
+    }
+
+    function indexToAlphaLabel(idx) {
+      let n = idx + 1;
+      let out = "";
+      while (n > 0) {
+        const rem = (n - 1) % 26;
+        out = String.fromCharCode(65 + rem) + out;
+        n = Math.floor((n - 1) / 26);
+      }
+      return out;
+    }
+
+    function getRosterDisplayName(p) {
+      const base = String(p.name || "").trim();
+      if (!base) return "";
+      const same = rosterParticipants.filter((x) => String(x.name || "").trim() === base);
+      if (same.length <= 1) return base;
+      const idx = same.findIndex((x) => x.id === p.id);
+      if (idx < 0) return base;
+      return `${base} ${indexToAlphaLabel(idx)}`;
+    }
+
+    function formatRosterSavedAt(ts) {
+      if (!ts) return "";
+      const d = new Date(ts);
+      if (Number.isNaN(d.getTime())) return "";
+      return d.toLocaleString("ko-KR", {
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+      });
+    }
+
+    function applyRosterParticipantToForm(p) {
+      currentCardSession = null; // 개인 모드 — 팀 합계 모드 해제
+      document.getElementById("participantName").value = p.name || "";
+      currentCardTeam = p.team ? String(p.team) : "";
+      if (p.session >= 1 && p.session <= 6) {
+        rosterRegSession = p.session;
+        updateRegSessionButtons();
+      }
+      const hasMetrics = p.metrics && Array.isArray(p.metrics) && p.metrics.length === 6;
+      for (let i = 0; i < 6; i++) {
+        const inp = document.querySelector(`.m-value[data-i="${i}"]`);
+        if (!inp) continue;
+        inp.value = hasMetrics ? (p.metrics[i] ?? "") : "";
+      }
+      document.getElementById("avgManual").value = p.avgManual != null ? String(p.avgManual) : "";
+      syncCard();
+    }
+
+    /** 회차·팀의 종목별 4명 기록 합계 배열(6칸) 반환. 값 있는 종목만 합산, 없으면 "" */
+    function computeTeamEventSums(session, team) {
+      const members = rosterParticipants.filter(
+        (p) => (p.session || 1) === session && String(p.team || "") === String(team || "")
+      );
+      const out = ["", "", "", "", "", ""];
+      if (members.length === 0) return out;
+      for (let i = 0; i < 6; i++) {
+        let sum = 0;
+        let allEntered = true;
+        members.forEach((p) => {
+          const sec = parseNumber((p.metrics && p.metrics[i]) || "");
+          if (sec === null) allEntered = false;
+          else sum += sec;
+        });
+        // 팀원 전원이 입력한 종목만 합계 표시 (일부만 입력 시 부분합 미표시)
+        out[i] = allEntered ? formatSecondsToClock(sum) : "";
+      }
+      return out;
+    }
+
+    /** 카드를 팀 합계 모드로 표시: 6칸 = 종목별 팀 4명 합계, 총점 = 6종목 합계의 합 */
+    function applyTeamToCard(session, team) {
+      currentCardSession = session;
+      currentCardTeam = team ? String(team) : "";
+      activeRosterId = null; // 팀 모드에서는 개인 선택 해제
+      if (session >= 1 && session <= 6) {
+        rosterRegSession = session;
+        updateRegSessionButtons();
+      }
+      document.getElementById("participantName").value = currentCardTeam;
+      const sums = computeTeamEventSums(session, team);
+      for (let i = 0; i < 6; i++) {
+        const inp = document.querySelector(`.m-value[data-i="${i}"]`);
+        if (inp) inp.value = sums[i];
+      }
+      document.getElementById("avgManual").value = "";
+      syncCard();
+    }
+
+    /** 남/여 선택 토글 위젯 (선택값은 dataset.gender 에 저장) */
+    function buildGenderToggle(current, availableGenders) {
+      const wrap = document.createElement("div");
+      wrap.className = "roster-gender-toggle";
+      wrap.dataset.gender = current;
+      [["M", "남"], ["F", "여"]].forEach(([g, label]) => {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "roster-gender-toggle__btn" + (g === current ? " is-active" : "");
+        btn.textContent = label;
+        if (availableGenders && !availableGenders.includes(g)) {
+          btn.disabled = true;
+          btn.classList.add("is-disabled");
+        }
+        btn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          if (btn.disabled) return;
+          wrap.dataset.gender = g;
+          wrap.querySelectorAll(".roster-gender-toggle__btn").forEach((x) => x.classList.remove("is-active"));
+          btn.classList.add("is-active");
+        });
+        wrap.appendChild(btn);
+      });
+      return wrap;
+    }
+
+    /** 팀원 인라인 수정 행 */
+    function buildMemberEditRow(p) {
+      const li = document.createElement("li");
+      li.className = `roster-item roster-item--${p.gender === "M" ? "m" : "f"} roster-item--editing`;
+      li.addEventListener("click", (e) => e.stopPropagation());
+      const input = document.createElement("input");
+      input.type = "text";
+      input.className = "roster-edit-input";
+      input.placeholder = "이름";
+      input.value = p.name || "";
+      const toggle = buildGenderToggle(p.gender, ["M", "F"]);
+      const save = document.createElement("button");
+      save.type = "button";
+      save.className = "roster-edit-btn roster-edit-btn--save";
+      save.textContent = "저장";
+      const cancel = document.createElement("button");
+      cancel.type = "button";
+      cancel.className = "roster-edit-btn roster-edit-btn--cancel";
+      cancel.textContent = "취소";
+      const close = () => {
+        editingMemberId = null;
+        renderRosterList();
+      };
+      const commit = () => {
+        const newName = input.value.trim();
+        const newGender = toggle.dataset.gender;
+        if (!newName) {
+          alert("이름을 입력해 주세요.");
+          input.focus();
+          return;
+        }
+        if (newGender !== p.gender && !genderHasRoom(p.session, p.team, newGender, p.id)) {
+          alert(`이 팀의 ${newGender === "M" ? "남자" : "여자"} 정원(${TEAM_GENDER_CAP}명)이 가득 찼습니다.`);
+          return;
+        }
+        const idx = rosterParticipants.findIndex((x) => x.id === p.id);
+        if (idx >= 0) {
+          rosterParticipants[idx].name = newName;
+          rosterParticipants[idx].gender = newGender;
+          rosterParticipants[idx].updatedAt = Date.now();
+          dbUpsertParticipant(rosterParticipants[idx]);
+        }
+        editingMemberId = null;
+        saveRoster();
+        renderRosterStats();
+        renderRosterList();
+      };
+      save.addEventListener("click", (e) => { e.stopPropagation(); commit(); });
+      cancel.addEventListener("click", (e) => { e.stopPropagation(); close(); });
+      input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") { e.preventDefault(); commit(); }
+        if (e.key === "Escape") { e.preventDefault(); close(); }
+      });
+      li.appendChild(input);
+      li.appendChild(toggle);
+      li.appendChild(save);
+      li.appendChild(cancel);
+      setTimeout(() => input.focus(), 0);
+      return li;
+    }
+
+    /** 팀원 추가 행 (접힌 버튼 / 펼친 입력 폼) */
+    function buildMemberAddRow(group) {
+      const menCount = countTeamGender(group.session, group.team, "M");
+      const womenCount = countTeamGender(group.session, group.team, "F");
+      const available = [];
+      if (menCount < TEAM_GENDER_CAP) available.push("M");
+      if (womenCount < TEAM_GENDER_CAP) available.push("F");
+
+      if (addingTeamKey !== group.key) {
+        const li = document.createElement("li");
+        li.className = "roster-add-row";
+        li.textContent = "+ 팀원 추가";
+        li.addEventListener("click", (e) => {
+          e.stopPropagation();
+          addingTeamKey = group.key;
+          editingMemberId = null;
+          renderRosterList();
+        });
+        return li;
+      }
+
+      const li = document.createElement("li");
+      li.className = "roster-item roster-item--editing roster-add-form";
+      li.addEventListener("click", (e) => e.stopPropagation());
+      const input = document.createElement("input");
+      input.type = "text";
+      input.className = "roster-edit-input";
+      input.placeholder = "이름";
+      const toggle = buildGenderToggle(available[0] || "M", available);
+      const add = document.createElement("button");
+      add.type = "button";
+      add.className = "roster-edit-btn roster-edit-btn--save";
+      add.textContent = "추가";
+      const cancel = document.createElement("button");
+      cancel.type = "button";
+      cancel.className = "roster-edit-btn roster-edit-btn--cancel";
+      cancel.textContent = "취소";
+      const close = () => {
+        addingTeamKey = null;
+        renderRosterList();
+      };
+      const commit = () => {
+        const name = input.value.trim();
+        const gender = toggle.dataset.gender;
+        if (!name) {
+          alert("이름을 입력해 주세요.");
+          input.focus();
+          return;
+        }
+        if (!genderHasRoom(group.session, group.team, gender)) {
+          alert(`이 팀의 ${gender === "M" ? "남자" : "여자"} 정원(${TEAM_GENDER_CAP}명)이 가득 찼습니다.`);
+          return;
+        }
+        const newMember = {
+          id: newRosterId(),
+          name,
+          gender,
+          session: group.session,
+          team: group.team,
+          updatedAt: Date.now(),
+        };
+        rosterParticipants.push(newMember);
+        dbUpsertParticipant(newMember);
+        const m = countTeamGender(group.session, group.team, "M");
+        const w = countTeamGender(group.session, group.team, "F");
+        if (m >= TEAM_GENDER_CAP && w >= TEAM_GENDER_CAP) addingTeamKey = null;
+        saveRoster();
+        renderRosterStats();
+        renderRosterList();
+      };
+      add.addEventListener("click", (e) => { e.stopPropagation(); commit(); });
+      cancel.addEventListener("click", (e) => { e.stopPropagation(); close(); });
+      input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") { e.preventDefault(); commit(); }
+        if (e.key === "Escape") { e.preventDefault(); close(); }
+      });
+      li.appendChild(input);
+      li.appendChild(toggle);
+      li.appendChild(add);
+      li.appendChild(cancel);
+      setTimeout(() => input.focus(), 0);
+      return li;
+    }
+
+    function renderRosterList() {
+      const ul = document.getElementById("rosterList");
+      ul.innerHTML = "";
+      const filtered = getFilteredRoster();
+      if (filtered.length === 0) {
+        const li = document.createElement("li");
+        li.className = "roster-empty";
+        li.textContent =
+          rosterParticipants.length === 0 ? "등록된 인원이 없습니다." : "조건에 맞는 인원이 없습니다.";
+        ul.appendChild(li);
+        return;
+      }
+      const sorted = filtered.slice().sort((a, b) => {
+        const sa = a.session || 0;
+        const sb = b.session || 0;
+        if (sa !== sb) return sa - sb;
+        const ta = String(a.team || "");
+        const tb = String(b.team || "");
+        if (ta !== tb) return ta.localeCompare(tb, "ko");
+        const ga = a.gender === "M" ? 0 : 1;
+        const gb = b.gender === "M" ? 0 : 1;
+        return ga - gb;
+      });
+
+      const groups = [];
+      const idxMap = new Map();
+      sorted.forEach((p) => {
+        const key = `${p.session}-${p.team}`;
+        if (!idxMap.has(key)) {
+          idxMap.set(key, groups.length);
+          groups.push({ key, session: p.session, team: p.team, members: [] });
+        }
+        groups[idxMap.get(key)].members.push(p);
+      });
+
+      groups.forEach((group) => {
+        const isOpen = expandedTeams.has(group.key);
+        const header = document.createElement("li");
+        header.className = `roster-team-header${isOpen ? " is-open" : ""}`;
+        const menCount = countTeamGender(group.session, group.team, "M");
+        const womenCount = countTeamGender(group.session, group.team, "F");
+        const teamLabel = group.team ? escapeHtml(String(group.team)) : "미지정 팀";
+        header.innerHTML = `
+          <span class="roster-team-header__toggle" aria-hidden="true">${isOpen ? "▼" : "▶"}</span>
+          <span class="roster-team-header__title">${group.session}회차 · ${teamLabel}</span>
+          <span class="roster-team-header__count">남 ${menCount}/${TEAM_GENDER_CAP} · 여 ${womenCount}/${TEAM_GENDER_CAP}</span>
+          <button type="button" class="roster-team-header__remove" aria-label="팀 삭제">×</button>
+        `;
+        header.addEventListener("click", () => {
+          applyTeamToCard(group.session, group.team);
+          if (expandedTeams.has(group.key)) expandedTeams.delete(group.key);
+          else expandedTeams.add(group.key);
+          renderRosterList();
+        });
+        header.querySelector(".roster-team-header__remove").addEventListener("click", (e) => {
+          e.stopPropagation();
+          const label = group.team ? group.team : "미지정 팀";
+          if (!confirm(`${group.session}회차 '${label}' 팀의 팀원 전체를 삭제할까요?`)) return;
+          const removedIds = rosterParticipants
+            .filter((x) => x.session === group.session && x.team === group.team)
+            .map((x) => x.id);
+          rosterParticipants = rosterParticipants.filter(
+            (x) => !(x.session === group.session && x.team === group.team)
+          );
+          if (removedIds.includes(activeRosterId)) activeRosterId = null;
+          expandedTeams.delete(group.key);
+          if (addingTeamKey === group.key) addingTeamKey = null;
+          dbDeleteIds(removedIds);
+          saveRoster();
+          renderRosterStats();
+          renderRosterList();
+        });
+        ul.appendChild(header);
+
+        if (!isOpen) return;
+
+        group.members.forEach((p) => {
+          if (editingMemberId === p.id) {
+            ul.appendChild(buildMemberEditRow(p));
+            return;
+          }
+          const li = document.createElement("li");
+          li.className = `roster-item roster-item--${p.gender === "M" ? "m" : "f"}`;
+          li.dataset.id = p.id;
+          const displayName = getRosterDisplayName(p);
+          const avgHtml =
+            p.summaryAvg != null && String(p.summaryAvg).trim() !== ""
+              ? `<span class="roster-item__avg">${escapeHtml(String(p.summaryAvg).trim())}</span>`
+              : "";
+          const savedAt = formatRosterSavedAt(p.updatedAt);
+          const savedAtHtml = savedAt ? `<span class="roster-item__saved-at">${escapeHtml(savedAt)}</span>` : "";
+          li.innerHTML = `
+            <span class="roster-item__text">${escapeHtml(displayName)}</span>
+            ${avgHtml}
+            ${savedAtHtml}
+            <span class="roster-item__session">${p.gender === "M" ? "남" : "여"}</span>
+            <button type="button" class="roster-item__edit" aria-label="수정">✎</button>
+            <button type="button" class="roster-item__remove" aria-label="삭제">×</button>
+          `;
+          li.querySelector(".roster-item__edit").addEventListener("click", (e) => {
+            e.stopPropagation();
+            editingMemberId = p.id;
+            addingTeamKey = null;
+            renderRosterList();
+          });
+          li.querySelector(".roster-item__remove").addEventListener("click", (e) => {
+            e.stopPropagation();
+            rosterParticipants = rosterParticipants.filter((x) => x.id !== p.id);
+            if (activeRosterId === p.id) activeRosterId = null;
+            if (editingMemberId === p.id) editingMemberId = null;
+            dbDeleteIds([p.id]);
+            saveRoster();
+            renderRosterStats();
+            renderRosterList();
+          });
+          li.addEventListener("click", () => {
+            activeRosterId = p.id;
+            applyRosterParticipantToForm(p);
+          });
+          ul.appendChild(li);
+        });
+
+        if (menCount < TEAM_GENDER_CAP || womenCount < TEAM_GENDER_CAP) {
+          ul.appendChild(buildMemberAddRow(group));
+        } else if (addingTeamKey === group.key) {
+          addingTeamKey = null;
+        }
+      });
+    }
+
+    function newRosterId() {
+      return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+    }
+
+    function registerTeam() {
+      const session = rosterRegSession;
+      const teamName = document.getElementById("rosterTeamName").value.trim();
+      const m1 = document.getElementById("memberM1").value.trim();
+      const m2 = document.getElementById("memberM2").value.trim();
+      const f1 = document.getElementById("memberF1").value.trim();
+      const f2 = document.getElementById("memberF2").value.trim();
+
+      if (!teamName) {
+        alert("팀명을 입력해 주세요.");
+        document.getElementById("rosterTeamName").focus();
+        return;
+      }
+      const members = [
+        { name: m1, gender: "M" },
+        { name: m2, gender: "M" },
+        { name: f1, gender: "F" },
+        { name: f2, gender: "F" },
+      ];
+      if (members.some((mem) => !mem.name)) {
+        alert("팀원 4명(남자 2명, 여자 2명)을 모두 입력해 주세요.");
+        return;
+      }
+
+      const existingTeams = teamNamesInSession(session);
+      if (existingTeams.includes(teamName)) {
+        alert(`${session}회차에 이미 '${teamName}' 팀이 등록되어 있습니다.`);
+        return;
+      }
+      if (existingTeams.length >= MAX_TEAMS_PER_SESSION) {
+        alert(`${session}회차는 최대 ${MAX_TEAMS_PER_SESSION}팀까지 등록할 수 있습니다.`);
+        return;
+      }
+
+      const newMembers = members.map((mem) => ({
+        id: newRosterId(),
+        name: mem.name,
+        gender: mem.gender,
+        session,
+        team: teamName,
+        updatedAt: Date.now(),
+      }));
+      newMembers.forEach((mem) => rosterParticipants.push(mem));
+      dbUpsertMany(newMembers);
+
+      document.getElementById("rosterTeamName").value = "";
+      document.getElementById("memberM1").value = "";
+      document.getElementById("memberM2").value = "";
+      document.getElementById("memberF1").value = "";
+      document.getElementById("memberF2").value = "";
+      document.getElementById("rosterTeamName").focus();
+      saveRoster();
+      renderRosterStats();
+      renderRosterList();
+    }
+
+    function initRoster() {
+      loadRoster();
+      updateRegSessionButtons();
+      renderRosterStats();
+      renderRosterList();
+
+      document.querySelectorAll("[data-reg-session]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          rosterRegSession = Number(btn.dataset.regSession);
+          updateRegSessionButtons();
+        });
+      });
+
+      document.getElementById("btnRosterRegister").addEventListener("click", registerTeam);
+      ["memberM1", "memberM2", "memberF1", "memberF2", "rosterTeamName"].forEach((id) => {
+        document.getElementById(id).addEventListener("keydown", (e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            registerTeam();
+          }
+        });
+      });
+
+      document.getElementById("btnRosterClearAll").addEventListener("click", () => {
+        if (rosterParticipants.length === 0) return;
+        if (confirm("등록된 참가자를 모두 삭제할까요?")) {
+          rosterParticipants = [];
+          activeRosterId = null;
+          dbDeleteAll();
+          saveRoster();
+          renderRosterStats();
+          renderRosterList();
+        }
+      });
+    }
+
+    function buildMetricRows() {
+      const host = document.getElementById("metricRows");
+      DEFAULT_METRICS.forEach((m, i) => {
+        const row = document.createElement("div");
+        row.className = "metric-row";
+        row.innerHTML = `
+          <input type="text" class="m-label" data-i="${i}" value="${m.label}" aria-label="종목 ${i + 1} 이름" />
+          <input type="text" class="m-value" data-i="${i}" placeholder="MM:SS.ss" inputmode="decimal" aria-label="종목 ${i + 1} 기록" />
+        `;
+        host.appendChild(row);
+      });
+    }
+
+    /** 기록 값을 총 '초'(소수 포함)로 해석. "MM:SS.ss" / "M:SS" / 숫자(초) 모두 지원. */
+    function parseNumber(s) {
+      const t = String(s).trim().replace(",", ".");
+      if (t === "") return null;
+      if (t.includes(":")) {
+        const parts = t.split(":");
+        if (parts.length !== 2) return null;
+        const mm = Number(parts[0] === "" ? "0" : parts[0]);
+        const ss = Number(parts[1] === "" ? "0" : parts[1]);
+        if (!Number.isFinite(mm) || !Number.isFinite(ss)) return null;
+        return mm * 60 + ss;
+      }
+      const n = Number(t);
+      return Number.isFinite(n) ? n : null;
+    }
+
+    /** 총 '초'를 "MM:SS.ss" 문자열로 포맷 (반올림은 1/100초 단위). */
+    function formatSecondsToClock(totalSeconds) {
+      if (totalSeconds == null || !Number.isFinite(totalSeconds)) return null;
+      const sign = totalSeconds < 0 ? "-" : "";
+      let centi = Math.round(Math.abs(totalSeconds) * 100);
+      const cc = centi % 100;
+      const totalSec = Math.floor(centi / 100);
+      const ss = totalSec % 60;
+      const mm = Math.floor(totalSec / 60);
+      const pad2 = (n) => String(n).padStart(2, "0");
+      return `${sign}${pad2(mm)}:${pad2(ss)}.${pad2(cc)}`;
+    }
+
+    /** 입력 편의 해석: 콜론 포함은 그대로, 순수 숫자열은 우측부터 MMSScc 로 묶음, 소수는 초로 간주. */
+    function parseTimeInputToSeconds(rawText) {
+      let t = String(rawText || "").trim().replace(",", ".");
+      if (t === "") return null;
+      if (t.includes(":")) return parseNumber(t);
+      if (/^\d+$/.test(t)) {
+        const padded = t.padStart(6, "0");
+        const cc = Number(padded.slice(-2));
+        const ss = Number(padded.slice(-4, -2));
+        const mm = Number(padded.slice(0, -4));
+        return mm * 60 + ss + cc / 100;
+      }
+      const n = Number(t);
+      return Number.isFinite(n) ? n : null;
+    }
+
+    function formatMetricDisplayValue(metricIndex, rawText) {
+      const n = parseNumber(rawText);
+      if (n === null) return rawText;
+      return formatSecondsToClock(n);
+    }
+
+    function normalizeMetricInputValue(metricIndex, inputEl) {
+      if (!inputEl) return;
+      const n = parseTimeInputToSeconds(inputEl.value);
+      if (n === null) return;
+      inputEl.value = formatSecondsToClock(n);
+    }
+
+    function getCurrentEvaluationGender() {
+      if (activeRosterId) {
+        const p = rosterParticipants.find((x) => x.id === activeRosterId);
+        if (p && (p.gender === "M" || p.gender === "F")) return p.gender;
+      }
+      return "M";
+    }
+
+    /**
+     * 종목별 팀 합산(4명) 등급 구간 — 시간(초). 짧을수록 좋음.
+     * metricIndex: 0~5 = DEFAULT_METRICS 순서.
+     * 각 값 = 해당 등급 상한(이 초 이하면 해당 등급). C 초과 = D.
+     * 예: { S: 120, A: 140, B: 160, C: 180 }
+     */
+    const TEAM_GRADE_THRESHOLDS = {
+      // SHUTTLE RUN — 4명 합산(초). S≤1:40.00, A≤1:47.00, B≤1:58.00, C≤2:09.00
+      0: { S: 100, A: 107, B: 118, C: 129 },
+      // SLED PUSH — 4명 합산(초). S≤0:50.00, A≤0:57.00, B≤1:08.00, C≤1:19.00
+      1: { S: 50, A: 57, B: 68, C: 79 },
+      // BOX JUMP OVER — 4명 합산(초). S≤2:00.00, A≤2:08.00, B≤2:20.00, C≤2:30.00
+      2: { S: 120, A: 128, B: 140, C: 150 },
+      // REACTION INTELLIGENCE — 4명 합산(초). S≤1:44.00, A≤1:49.00, B≤2:00.00, C≤2:10.00
+      3: { S: 104, A: 109, B: 120, C: 130 },
+      // FARMER'S CARRY — 4명 합산(초). S≤2:24.00, A≤2:30.00, B≤2:41.00, C≤2:52.00
+      4: { S: 144, A: 150, B: 161, C: 172 },
+      // ROWING — 4명 합산(초). S≤3:00.00, A≤3:07.00, B≤3:17.00, C≤3:27.00
+      5: { S: 180, A: 187, B: 197, C: 207 },
+    };
+
+    /** 팀 합산(초) → 등급. 기준표 미입력 종목은 D */
+    function metricGradeFromTeamTotalSeconds(totalSec, metricIndex) {
+      if (totalSec === null || !Number.isFinite(totalSec)) return "D";
+      const t = TEAM_GRADE_THRESHOLDS[metricIndex];
+      if (!t || t.S == null || t.A == null || t.B == null || t.C == null) return "D";
+      if (totalSec <= t.S) return "S";
+      if (totalSec <= t.A) return "A";
+      if (totalSec <= t.B) return "B";
+      if (totalSec <= t.C) return "C";
+      return "D";
+    }
+
+    /** 레이더 그래프 등급 산출용 — 종목별 팀 4명 합산 배열(6칸) */
+    function getTeamSumValuesForSpider() {
+      let session = currentCardSession;
+      let team = currentCardTeam;
+      if (session == null || !team) {
+        if (activeRosterId) {
+          const p = rosterParticipants.find((x) => x.id === activeRosterId);
+          if (p && p.team) {
+            session = p.session || 1;
+            team = String(p.team);
+          }
+        }
+      }
+      if (session == null || !team) return null;
+      return computeTeamEventSums(session, team);
+    }
+
+    /**
+     * 실측값 → 점수. raw = 해당 종목 팀 4명 합산(초).
+     * metricIndex: 0~5 = DEFAULT_METRICS 순서.
+     */
+    function metricRawToScore(raw, metricIndex) {
+      const grade = metricGradeFromTeamTotalSeconds(raw, metricIndex);
+      const gradeToScore = { S: 95, A: 85, B: 75, C: 65, D: 55 };
+      return gradeToScore[grade] || 55;
+    }
+
+    const SPIDER_AXIS_METRIC_INDEX = [0, 1, 2, 3, 4, 5];
+
+    /** raw = 해당 종목 팀 4명 합산(초) */
+    function metricGrade(raw, metricIndex, score) {
+      return metricGradeFromTeamTotalSeconds(raw, metricIndex);
+    }
+
+    function getSpiderVertex(axisIdx, ratio) {
+      const cx = 50;
+      const cy = 50;
+      const maxR = 38;
+      const angle = -Math.PI / 2 + axisIdx * (Math.PI / 3);
+      return {
+        x: cx + Math.cos(angle) * maxR * ratio,
+        y: cy + Math.sin(angle) * maxR * ratio,
+      };
+    }
+
+    function buildSpiderPoints(values) {
+      const pts = [];
+      const teamSums = getTeamSumValuesForSpider();
+      const gradeToRatio = {
+        D: 0.2,
+        C: 0.4,
+        B: 0.6,
+        A: 0.8,
+        S: 1.0,
+      };
+      SPIDER_AXIS_METRIC_INDEX.forEach((metricIdx, axisIdx) => {
+        const sumText = teamSums ? teamSums[metricIdx] : values[metricIdx] || "";
+        const raw = parseNumber(sumText);
+        const score = raw === null ? 0 : metricRawToScore(raw, metricIdx);
+        const safeScore = Number.isFinite(score) ? Math.max(0, Math.min(100, score)) : 0;
+        const grade = raw === null ? "D" : metricGrade(raw, metricIdx, safeScore);
+        const ratio = gradeToRatio[grade] || 0.2;
+        const point = getSpiderVertex(axisIdx, ratio);
+        const badgePoint = getSpiderVertex(axisIdx, Math.min(1.08, ratio + 0.12));
+        pts.push({
+          x: point.x,
+          y: point.y,
+          badgeX: badgePoint.x,
+          badgeY: badgePoint.y,
+          grade,
+        });
+      });
+      return pts;
+    }
+
+    function renderSpiderGraph(values) {
+      const svg = document.getElementById("ovSpider");
+      if (!svg) return;
+      const ringRatios = [0.2, 0.4, 0.6, 0.8, 1];
+      const rings = ringRatios
+        .map((r, idx) => {
+          const cls = idx === ringRatios.length - 1 ? "spider-ring spider-ring--outer" : "spider-ring";
+          const points = Array.from({ length: 6 }, (_, axisIdx) => {
+            const p = getSpiderVertex(axisIdx, r);
+            return `${p.x.toFixed(2)},${p.y.toFixed(2)}`;
+          }).join(" ");
+          return `<polygon class="${cls}" points="${points}"></polygon>`;
+        })
+        .join("");
+      const axes = Array.from({ length: 6 }, (_, axisIdx) => {
+        const p = getSpiderVertex(axisIdx, 1);
+        return `<line class="spider-axis" x1="50" y1="50" x2="${p.x.toFixed(2)}" y2="${p.y.toFixed(2)}"></line>`;
+      }).join("");
+
+      const pts = buildSpiderPoints(values);
+      const hasAnyInput = values.some((v) => parseNumber(v) !== null);
+      if (pts.length !== 6 || !hasAnyInput) {
+        svg.innerHTML = `${rings}${axes}`;
+        return;
+      }
+      const polygonPoints = pts.map((p) => `${p.x.toFixed(2)},${p.y.toFixed(2)}`).join(" ");
+      const badges = pts
+        .map(
+          (p) =>
+            `<g><circle class="spider-badge${p.grade === "S" ? " spider-badge--s" : ""}" cx="${p.badgeX.toFixed(2)}" cy="${p.badgeY.toFixed(2)}" r="2.55"></circle><text class="spider-grade${p.grade === "S" ? " spider-grade--s" : ""}${p.grade === "D" ? " spider-grade--d" : ""}" x="${p.badgeX.toFixed(2)}" y="${p.badgeY.toFixed(2)}">${p.grade}</text></g>`
+        )
+        .join("");
+      svg.innerHTML = `${rings}${axes}<polygon points="${polygonPoints}"></polygon>${badges}`;
+    }
+
+    /** 카드 중앙 평균: 6종목 모두 입력된 경우, 환산 점수들의 산술 평균 */
+    /** 카드 중앙 총점: 6종목 기록 시간(초)의 합산. 6개 모두 입력된 경우에만 값 반환. */
+    function computeTotalTimeFromValues() {
+      const inputs = Array.from(document.querySelectorAll("#metricRows .m-value"));
+      if (inputs.length !== 6) return null;
+      let sum = 0;
+      for (let i = 0; i < 6; i++) {
+        const sec = parseNumber(inputs[i].value);
+        if (sec === null) return null;
+        sum += sec;
+      }
+      return sum;
+    }
+
+    /** 6종목 값 배열 → 총 초 (모두 입력됐을 때만). 스테이션·동기화에서 사용 */
+    function computeTotalTimeFromMetrics(arr) {
+      if (!Array.isArray(arr) || arr.length < 6) return null;
+      let sum = 0;
+      for (let i = 0; i < 6; i++) {
+        const sec = parseNumber(arr[i]);
+        if (sec === null) return null;
+        sum += sec;
+      }
+      return sum;
+    }
+
+    /* ===== 스테이션(포스트) 입력 모드 ===== */
+    let stationEventIndex = 0;
+    let stationSessionNum = 1;
+    let stationTeam = ""; // 선택된 등록팀 ("" = 전체 보기)
+
+    function initStationView(params) {
+      const ev = Number(params.get("event"));
+      if (ev >= 1 && ev <= 6) stationEventIndex = ev - 1;
+      const ses = Number(params.get("session"));
+      if (ses >= 1 && ses <= 6) stationSessionNum = ses;
+      const teamParam = params.get("team");
+      if (teamParam) stationTeam = teamParam;
+
+      const evHost = document.getElementById("stationEventPills");
+      DEFAULT_METRICS.forEach((m, i) => {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = "station-pill" + (i === stationEventIndex ? " is-active" : "");
+        b.textContent = `${i + 1}. ${m.label}`;
+        b.addEventListener("click", () => {
+          stationEventIndex = i;
+          updateStationPills();
+          renderStationView();
+        });
+        evHost.appendChild(b);
+      });
+
+      const sesHost = document.getElementById("stationSessionPills");
+      for (let s = 1; s <= 6; s++) {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = "station-pill" + (s === stationSessionNum ? " is-active" : "");
+        b.textContent = `${s}회차`;
+        b.dataset.s = String(s);
+        b.addEventListener("click", () => {
+          stationSessionNum = s;
+          stationTeam = ""; // 회차 바꾸면 팀 선택 초기화
+          updateStationPills();
+          populateStationTeamSelect();
+          renderStationView();
+        });
+        sesHost.appendChild(b);
+      }
+
+      const sel = document.getElementById("stationTeamSelect");
+      if (sel) {
+        sel.addEventListener("change", () => {
+          stationTeam = sel.value;
+          renderStationView();
+        });
+      }
+
+      updateStationPills();
+      populateStationTeamSelect();
+    }
+
+    /** 현재 회차의 등록팀 목록으로 드롭다운 채우기 (선택값 보존) */
+    function populateStationTeamSelect() {
+      const sel = document.getElementById("stationTeamSelect");
+      if (!sel) return;
+      const teams = Array.from(
+        new Set(
+          rosterParticipants
+            .filter((p) => (p.session || 1) === stationSessionNum && p.team)
+            .map((p) => String(p.team))
+        )
+      ).sort((a, b) => a.localeCompare(b, "ko"));
+      if (stationTeam && !teams.includes(stationTeam)) stationTeam = "";
+      const opts = [`<option value="">전체 보기 (${teams.length}팀)</option>`].concat(
+        teams.map((t) => `<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`)
+      );
+      sel.innerHTML = opts.join("");
+      sel.value = stationTeam;
+    }
+
+    function updateStationPills() {
+      document.querySelectorAll("#stationEventPills .station-pill").forEach((b, i) => {
+        b.classList.toggle("is-active", i === stationEventIndex);
+      });
+      document.querySelectorAll("#stationSessionPills .station-pill").forEach((b) => {
+        b.classList.toggle("is-active", Number(b.dataset.s) === stationSessionNum);
+      });
+      document.getElementById("stationEventName").textContent =
+        DEFAULT_METRICS[stationEventIndex].label;
+    }
+
+    /** 포스트(현재 종목): 팀원 전원 입력 시 해당 종목 4명 합계 (MM:SS.ss) */
+    function computeStationEventTeamSum(session, team, eventIndex) {
+      const members = rosterParticipants.filter(
+        (p) => (p.session || 1) === session && String(p.team || "") === String(team || "")
+      );
+      if (members.length === 0) return null;
+      let sum = 0;
+      for (const p of members) {
+        const sec = parseNumber((p.metrics && p.metrics[eventIndex]) || "");
+        if (sec === null) return null;
+        sum += sec;
+      }
+      return formatSecondsToClock(sum);
+    }
+
+    function renderStationView() {
+      const host = document.getElementById("stationList");
+      if (!host) return;
+      // 입력 중(포커스된 기록칸이 있음)에는 재그리기 보류 — 타이핑 끊김 방지
+      const active = document.activeElement;
+      if (active && active.classList && active.classList.contains("station-member__input")) {
+        return;
+      }
+      document.getElementById("stationEventName").textContent =
+        DEFAULT_METRICS[stationEventIndex].label;
+      populateStationTeamSelect();
+      host.innerHTML = "";
+
+      const sessionMembers = rosterParticipants.filter((p) => (p.session || 1) === stationSessionNum);
+      if (sessionMembers.length === 0) {
+        const d = document.createElement("div");
+        d.className = "station-empty";
+        d.textContent = `${stationSessionNum}회차에 등록된 팀이 없습니다. 메인 화면에서 팀을 먼저 등록하세요.`;
+        host.appendChild(d);
+        return;
+      }
+      const members = stationTeam
+        ? sessionMembers.filter((p) => String(p.team || "") === stationTeam)
+        : sessionMembers;
+      if (members.length === 0) {
+        const d = document.createElement("div");
+        d.className = "station-empty";
+        d.textContent = `'${stationTeam}' 팀을 찾을 수 없습니다.`;
+        host.appendChild(d);
+        return;
+      }
+
+      const groups = [];
+      const idx = new Map();
+      members
+        .slice()
+        .sort((a, b) => {
+          const ta = String(a.team || "");
+          const tb = String(b.team || "");
+          if (ta !== tb) return ta.localeCompare(tb, "ko");
+          return (a.gender === "M" ? 0 : 1) - (b.gender === "M" ? 0 : 1);
+        })
+        .forEach((p) => {
+          const key = String(p.team || "");
+          if (!idx.has(key)) {
+            idx.set(key, groups.length);
+            groups.push({ team: key, members: [] });
+          }
+          groups[idx.get(key)].members.push(p);
+        });
+
+      groups.forEach((g) => {
+        const card = document.createElement("div");
+        card.className = "station-team";
+        const title = document.createElement("div");
+        title.className = "station-team__title";
+        const teamLabel = g.team ? g.team : "미지정 팀";
+        const eventSum = computeStationEventTeamSum(stationSessionNum, g.team, stationEventIndex);
+        if (eventSum) {
+          title.innerHTML = `<span>${escapeHtml(teamLabel)}</span><span class="station-team__total">${escapeHtml(eventSum)}</span>`;
+        } else {
+          title.textContent = teamLabel;
+        }
+        card.appendChild(title);
+
+        g.members.forEach((p) => {
+          const row = document.createElement("div");
+          row.className = "station-member";
+
+          const name = document.createElement("div");
+          name.className = "station-member__name";
+          name.textContent = p.name || "(이름 없음)";
+
+          const gender = document.createElement("span");
+          gender.className =
+            "station-member__gender station-member__gender--" + (p.gender === "M" ? "m" : "f");
+          gender.textContent = p.gender === "M" ? "남" : "여";
+
+          const input = document.createElement("input");
+          input.type = "text";
+          input.className = "station-member__input";
+          input.inputMode = "decimal";
+          input.placeholder = "MM:SS.ss";
+          const cur = (p.metrics && p.metrics[stationEventIndex]) || "";
+          input.value = cur ? formatMetricDisplayValue(stationEventIndex, cur) : "";
+
+          const commit = () => {
+            const secs = parseTimeInputToSeconds(input.value);
+            const formatted = secs === null ? input.value.trim() : formatSecondsToClock(secs);
+            if (formatted) input.value = formatted;
+            saveStationValue(p.id, formatted);
+            input.classList.remove("is-saved");
+            void input.offsetWidth;
+            input.classList.add("is-saved");
+          };
+          input.addEventListener("keydown", (e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              commit();
+              input.blur();
+            }
+          });
+          input.addEventListener("blur", commit);
+
+          row.appendChild(name);
+          row.appendChild(gender);
+          row.appendChild(input);
+          card.appendChild(row);
+        });
+
+        host.appendChild(card);
+      });
+    }
+
+    function saveStationValue(participantId, value) {
+      const i = rosterParticipants.findIndex((x) => x.id === participantId);
+      if (i < 0) return;
+      const p = rosterParticipants[i];
+      const metrics = Array.isArray(p.metrics) ? p.metrics.slice() : ["", "", "", "", "", ""];
+      while (metrics.length < 6) metrics.push("");
+      metrics[stationEventIndex] = value || "";
+      let summaryAvg = p.summaryAvg;
+      const total = computeTotalTimeFromMetrics(metrics);
+      if (total !== null) summaryAvg = formatSecondsToClock(total);
+      const updated = { ...p, metrics, summaryAvg: summaryAvg || undefined, updatedAt: Date.now() };
+      rosterParticipants[i] = updated;
+      try {
+        localStorage.setItem(ROSTER_STORAGE_KEY, JSON.stringify(rosterParticipants));
+      } catch (_) {}
+      dbSetParticipant(updated);
+      setTimeout(() => renderStationView(), 0);
+    }
+
+    /* ===== 랭킹 보드 (확장 디스플레이) ===== */
+    const RANKING_EVENT_HEADERS = [
+      { en: "SPEED", ko: "셔틀런" },
+      { en: "POWER", ko: "슬레드 푸시" },
+      { en: "VERTICAL", ko: "박스 점프 오버" },
+      { en: "COGNITION", ko: "반응 지능 테스트" },
+      { en: "STRENGTH", ko: "파머스 캐리" },
+      { en: "ENDURANCE", ko: "로잉" },
+    ];
+    const RANKING_EVENT_SHIFT_SUFFIX = {
+      1: "power",
+      2: "vertical",
+      3: "cognition",
+      4: "strength",
+      5: "endurance",
+    };
+    function rankingEventExtraClass(metricIndex, kind) {
+      const suffix = RANKING_EVENT_SHIFT_SUFFIX[metricIndex];
+      if (!suffix) return "";
+      return kind === "th"
+        ? ` ranking-th--event-${suffix}`
+        : ` ranking-row__event--${suffix}`;
+    }
+    let rankingSessionNum = 1;
+
+    /** 회차·팀 1팀의 랭킹용 데이터 (6종목 전원 입력 시에만 complete) */
+    function computeTeamRankingEntry(session, team) {
+      const eventSums = computeTeamEventSums(session, team);
+      const complete = eventSums.every((v) => v !== "");
+      if (!complete) {
+        return { team, complete: false, eventSums, totalSec: null, totalDisplay: "" };
+      }
+      let totalSec = 0;
+      for (let i = 0; i < 6; i++) totalSec += parseNumber(eventSums[i]);
+      return {
+        team,
+        complete: true,
+        eventSums,
+        totalSec,
+        totalDisplay: formatSecondsToClock(totalSec),
+      };
+    }
+
+    function buildSessionRankings(session) {
+      const teams = teamNamesInSession(session);
+      const all = teams.map((t) => computeTeamRankingEntry(session, t));
+      const ranked = all.filter((e) => e.complete).sort((a, b) => a.totalSec - b.totalSec);
+      ranked.forEach((e, i) => {
+        e.rank = i + 1;
+      });
+      const pending = all.filter((e) => !e.complete);
+      return { ranked, pending, teams };
+    }
+
+    function tryRankingFullscreen() {
+      const el = document.documentElement;
+      if (el.requestFullscreen && !document.fullscreenElement) {
+        el.requestFullscreen().catch(() => {});
+      }
+    }
+
+    /** 랭킹 UI 초기화 (렌더는 Supabase fetch 후) */
+    function initRankingViewSetup(params) {
+      document.body.classList.add("ranking-mode");
+      document.getElementById("rankingView").hidden = false;
+      const rankingBg = document.getElementById("rankingBgImg");
+      if (rankingBg) {
+        rankingBg.src = `assets/ranking-bg.png?v=${Date.now()}`;
+      }
+      const badge = document.getElementById("syncBadge");
+      if (badge) badge.hidden = true;
+      const ses = Number(params.get("session"));
+      if (ses >= 1 && ses <= 6) rankingSessionNum = ses;
+      setTimeout(tryRankingFullscreen, 400);
+      const rv = document.getElementById("rankingView");
+      if (rv) rv.addEventListener("click", tryRankingFullscreen, { once: true });
+      document.addEventListener("keydown", (e) => {
+        if (!document.body.classList.contains("ranking-mode")) return;
+        const n = Number(e.key);
+        if (n >= 1 && n <= 6) {
+          rankingSessionNum = n;
+          renderRankingView();
+        }
+      });
+    }
+
+    function showRankingLoading() {
+      const body = document.getElementById("rankingBody");
+      if (body) {
+        body.innerHTML = `<div class="ranking-empty">Supabase에서 기록 불러오는 중…</div>`;
+      }
+    }
+
+    function showRankingNoSyncWarning() {
+      const body = document.getElementById("rankingBody");
+      if (body) {
+        body.innerHTML = `<div class="ranking-empty">클라우드(Supabase)에 연결되지 않았습니다.<br><br>
+          file:// 로 열면 이 PC의 브라우저 저장소와 http://127.0.0.1 저장소가 <strong>서로 다릅니다.</strong><br>
+          메인·포스트에서 입력한 기록을 불러오려면 <strong>인터넷 연결</strong>과 Supabase 설정이 필요합니다.<br><br>
+          또는 Live Server(<code>http://127.0.0.1:5500/...</code>)로 여세요.</div>`;
+      }
+    }
+
+    function renderRankingView() {
+      const body = document.getElementById("rankingBody");
+      if (!body) return;
+      document.title = `${rankingSessionNum}회차 RANKING — UA NEXT COMBINE`;
+
+      const { ranked, pending, teams } = buildSessionRankings(rankingSessionNum);
+
+      if (teams.length === 0) {
+        body.innerHTML = `<div class="ranking-empty">${rankingSessionNum}회차에 등록된 팀이 없습니다.</div>`;
+        return;
+      }
+
+      const eventHeaders = DEFAULT_METRICS.map((m, i) => {
+        const h = RANKING_EVENT_HEADERS[i] || { en: m.label, ko: "" };
+        const extraCls = rankingEventExtraClass(i, "th");
+        return `<th class="ranking-col-event ranking-th--event${extraCls}" title="${escapeHtml(m.label)}">
+            <span class="ranking-event-title">
+              <span class="ranking-event-title__en">${escapeHtml(h.en)}</span>
+              <span class="ranking-event-title__ko">${escapeHtml(h.ko)}</span>
+            </span>
+          </th>`;
+      }).join("");
+
+      function rankingRowHtml(entry) {
+        const isPending = !entry.complete;
+        const rank = entry.rank;
+        let rowCls = "ranking-row";
+        if (!isPending && rank === 1) rowCls += " ranking-row--p1";
+        else if (!isPending && rank === 2) rowCls += " ranking-row--p2";
+        else if (!isPending && rank >= 3) rowCls += " ranking-row--rank-sub";
+        else if (isPending) rowCls += " ranking-row--pending";
+
+        const badge =
+          !isPending && rank <= 2
+            ? `<span class="ranking-row__badge">NEXT ROUND</span>`
+            : !isPending && rank >= 3
+              ? `<span class="ranking-row__badge ranking-row__badge--spacer" aria-hidden="true">NEXT ROUND</span>`
+              : "";
+
+        const rankCell = isPending
+          ? "—"
+          : `<span class="ranking-row__rank-num">${rank}</span>`;
+
+        const sums = entry.eventSums || ["", "", "", "", "", ""];
+        const events = sums
+          .map((v, i) => {
+            const cls = v ? "" : " is-empty";
+            const extraCls = rankingEventExtraClass(i, "row");
+            return `<td class="ranking-row__event${cls}${extraCls}"><span class="ranking-event-value">${v ? escapeHtml(v) : "—"}</span></td>`;
+          })
+          .join("");
+
+        return `<tr class="${rowCls}">
+          <td class="ranking-row__rank">${rankCell}</td>
+          <td class="ranking-row__team">
+            <div class="ranking-team-label">
+              <span class="ranking-team-label__text">${escapeHtml(entry.team)}</span>
+            </div>${badge}
+          </td>
+          ${events}
+          <td class="ranking-row__total"><span class="ranking-total-value">${isPending ? "—" : escapeHtml(entry.totalDisplay)}</span></td>
+        </tr>`;
+      }
+
+      body.innerHTML = `
+        <table class="ranking-table" aria-label="${rankingSessionNum}회차 팀 순위">
+          <colgroup>
+            <col class="ranking-col-rank" />
+            <col class="ranking-col-team" />
+            ${DEFAULT_METRICS.map(() => `<col class="ranking-col-event" />`).join("")}
+            <col class="ranking-col-total" />
+          </colgroup>
+          <thead>
+            <tr>
+              <th class="ranking-th--rank" aria-hidden="true"></th>
+              <th class="ranking-th--team" aria-hidden="true"></th>
+              ${eventHeaders}
+              <th class="ranking-th--total" aria-hidden="true"></th>
+            </tr>
+          </thead>
+          <tbody>${ranked.map(rankingRowHtml).join("")}${pending.map(rankingRowHtml).join("")}</tbody>
+        </table>`;
+    }
+
+    function syncCard() {
+      const name = document.getElementById("participantName").value.trim();
+      document.getElementById("ovName").textContent = currentCardTeam || "\u00a0";
+
+      const totalTime = computeTotalTimeFromValues();
+      const hero = document.getElementById("ovAvgHero");
+      const heroVal = document.getElementById("ovAvgValueHero");
+      const totalField = document.getElementById("avgManual");
+      if (totalTime !== null) {
+        const totalText = formatSecondsToClock(totalTime);
+        heroVal.textContent = totalText;
+        hero.hidden = false;
+        if (totalField) totalField.value = totalText;
+      } else {
+        hero.hidden = true;
+        if (totalField) totalField.value = "";
+      }
+
+      const values = Array.from(document.querySelectorAll(".m-value")).map((el) => el.value.trim());
+      renderSpiderGraph(values);
+      /* 2열×3행 열 우선 = 1·3·5열(좌) 후 2·4·6열(우) */
+      const order = [0, 2, 4, 1, 3, 5];
+
+      const ov = document.getElementById("ovMetrics");
+      ov.innerHTML = "";
+      order.forEach((i) => {
+        const raw = values[i] || "";
+        const text = raw === "" ? "—" : formatMetricDisplayValue(i, raw);
+        const cell = document.createElement("div");
+        cell.className = "overlay-metric-cell";
+        cell.dataset.metricIndex = String(i);
+        const scale = document.createElement("div");
+        scale.className = "overlay-metric-value__scale";
+        const val = document.createElement("div");
+        val.className = "overlay-metric-value";
+        val.textContent = text;
+        scale.appendChild(val);
+        cell.appendChild(scale);
+        ov.appendChild(cell);
+      });
+    }
+
+    function printCard() {
+      syncCard();
+      setTimeout(() => window.print(), 100);
+    }
+
+    function flashSaveRecordFeedback(msg) {
+      const el = document.getElementById("saveRecordFeedback");
+      if (!el) return;
+      el.textContent = msg;
+      el.hidden = false;
+      clearTimeout(flashSaveRecordFeedback._t);
+      flashSaveRecordFeedback._t = setTimeout(() => {
+        el.hidden = true;
+        el.textContent = "";
+      }, 2200);
+    }
+
+    function saveCurrentRecord() {
+      const name = document.getElementById("participantName").value.trim();
+      if (!name) {
+        flashSaveRecordFeedback("이름을 입력해 주세요.");
+        document.getElementById("participantName").focus();
+        return;
+      }
+      const inputs = Array.from(document.querySelectorAll("#metricRows .m-value"));
+      const metrics = inputs.map((el) => el.value.trim());
+      const avgManual = document.getElementById("avgManual").value.trim();
+      let summaryAvg = "";
+      const totalTime = computeTotalTimeFromValues();
+      if (totalTime !== null) summaryAvg = formatSecondsToClock(totalTime);
+      else if (avgManual) summaryAvg = avgManual;
+
+      const payload = {
+        metrics,
+        avgManual,
+        summaryAvg: summaryAvg || undefined,
+        updatedAt: Date.now(),
+      };
+
+      let targetIdx = -1;
+      if (activeRosterId) {
+        targetIdx = rosterParticipants.findIndex((p) => p.id === activeRosterId);
+      }
+      if (targetIdx === -1) {
+        targetIdx = rosterParticipants.findIndex((p) => p.name === name);
+      }
+      if (targetIdx !== -1) {
+        rosterParticipants[targetIdx] = { ...rosterParticipants[targetIdx], ...payload };
+        activeRosterId = rosterParticipants[targetIdx].id;
+        dbUpsertParticipant(rosterParticipants[targetIdx]);
+      } else {
+        const id = `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+        const created = {
+          id,
+          name,
+          gender: "M",
+          session: rosterRegSession,
+          team: "",
+          ...payload,
+        };
+        rosterParticipants.push(created);
+        activeRosterId = id;
+        dbUpsertParticipant(created);
+      }
+      saveRoster();
+      renderRosterStats();
+      renderRosterList();
+      flashSaveRecordFeedback("기록을 저장했습니다.");
+    }
+
+    const CSV_EXPORT_HEADERS = [
+      "이름",
+      "성별",
+      "회차",
+      "팀",
+      "종목1",
+      "종목2",
+      "종목3",
+      "종목4",
+      "종목5",
+      "종목6",
+      "총시간",
+      "수정일시",
+    ];
+
+    function csvEscapeCell(val) {
+      const s = val == null ? "" : String(val);
+      if (/[",\r\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+      return s;
+    }
+
+    function formatCsvTimestamp(ts) {
+      if (ts == null || ts === "") return "";
+      const d = new Date(ts);
+      if (Number.isNaN(d.getTime())) return "";
+      return d.toLocaleString("ko-KR", { hour12: true });
+    }
+
+    function csvRowFromParticipant(p) {
+      const m =
+        p.metrics && Array.isArray(p.metrics) && p.metrics.length === 6
+          ? p.metrics.map((x) => (x == null ? "" : String(x)))
+          : ["", "", "", "", "", ""];
+      const cells = [
+        p.name || "",
+        p.gender === "M" ? "M" : p.gender === "F" ? "F" : "",
+        p.session != null ? String(p.session) : "",
+        p.team != null ? String(p.team) : "",
+        m[0],
+        m[1],
+        m[2],
+        m[3],
+        m[4],
+        m[5],
+        p.summaryAvg != null ? String(p.summaryAvg) : "",
+        formatCsvTimestamp(p.updatedAt),
+      ];
+      return cells.map(csvEscapeCell).join(",");
+    }
+
+    function participantFromCurrentForm() {
+      const name = document.getElementById("participantName").value.trim();
+      const inputs = Array.from(document.querySelectorAll("#metricRows .m-value"));
+      const metrics = inputs.map((el) => el.value.trim());
+      const avgManual = document.getElementById("avgManual").value.trim();
+      let summaryAvg = "";
+      const totalTime = computeTotalTimeFromValues();
+      if (totalTime !== null) summaryAvg = formatSecondsToClock(totalTime);
+      else if (avgManual) summaryAvg = avgManual;
+      return {
+        name,
+        gender: "M",
+        session: rosterRegSession,
+        team: "",
+        metrics,
+        avgManual,
+        summaryAvg: summaryAvg || undefined,
+        updatedAt: Date.now(),
+      };
+    }
+
+    function getParticipantsForCsvScope(scope) {
+      if (scope === "form") return [participantFromCurrentForm()];
+      if (scope === "filtered") return getFilteredRoster();
+      return rosterParticipants.slice();
+    }
+
+    function buildCsvText(participants, useBom) {
+      const lines = [CSV_EXPORT_HEADERS.map(csvEscapeCell).join(",")];
+      participants.forEach((p) => lines.push(csvRowFromParticipant(p)));
+      const body = lines.join("\r\n") + "\r\n";
+      return useBom ? `\uFEFF${body}` : body;
+    }
+
+    function sanitizeCsvFilename(raw) {
+      const base = String(raw || "combine_records").trim() || "combine_records";
+      const noExt = base.replace(/\.csv$/i, "");
+      const safe = noExt.replace(/[/\\?*:|"<>]/g, "_").replace(/\s+/g, "_");
+      return (safe || "combine_records") + ".csv";
+    }
+
+    function defaultCsvBasename() {
+      const d = new Date();
+      const pad = (n) => String(n).padStart(2, "0");
+      return `combine_records_${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}`;
+    }
+
+    function openCsvExportModal() {
+      document.getElementById("csvFilenameInput").value = defaultCsvBasename();
+      const modal = document.getElementById("csvExportModal");
+      modal.hidden = false;
+      modal.setAttribute("aria-hidden", "false");
+      document.body.style.overflow = "hidden";
+      setTimeout(() => document.getElementById("csvFilenameInput").focus(), 50);
+    }
+
+    function closeCsvExportModal() {
+      const modal = document.getElementById("csvExportModal");
+      modal.hidden = true;
+      modal.setAttribute("aria-hidden", "true");
+      document.body.style.overflow = "";
+    }
+
+    function downloadCsvFile() {
+      const scope = document.querySelector('input[name="csvScope"]:checked')?.value || "all";
+      const participants = getParticipantsForCsvScope(scope);
+      if (participants.length === 0) {
+        alert(
+          scope === "filtered" ? "조건에 맞는 등록 인원이 없습니다." : "등록된 인원이 없습니다."
+        );
+        return;
+      }
+      if (scope === "form" && !participants[0].name.trim()) {
+        const ok = confirm("이름이 비어 있습니다. 그대로 1행만 CSV로 저장할까요?");
+        if (!ok) return;
+      }
+      const useBom = document.getElementById("csvUtf8Bom").checked;
+      const text = buildCsvText(participants, useBom);
+      const filename = sanitizeCsvFilename(document.getElementById("csvFilenameInput").value);
+      const blob = new Blob([text], { type: "text/csv;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      a.rel = "noopener";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      closeCsvExportModal();
+    }
+
+    function getOrderedMetricValueInputs() {
+      return Array.from(document.querySelectorAll("#metricRows .m-value")).sort(
+        (a, b) => Number(a.dataset.i) - Number(b.dataset.i)
+      );
+    }
+
+    function focusNextMetricValue(fromEl) {
+      const inputs = getOrderedMetricValueInputs();
+      const idx = inputs.indexOf(fromEl);
+      if (idx === -1) return;
+      const next = inputs[idx + 1];
+      if (next) {
+        next.focus({ preventScroll: false });
+      } else {
+        document.getElementById("avgManual").focus();
+      }
+    }
+
+    buildMetricRows();
+    syncCard();
+    initRoster();
+
+    document.getElementById("btnPrint").addEventListener("click", printCard);
+    document.getElementById("btnSaveRecord").addEventListener("click", saveCurrentRecord);
+    document.getElementById("btnCsvExport").addEventListener("click", openCsvExportModal);
+    document.getElementById("csvExportCancel").addEventListener("click", closeCsvExportModal);
+    document.getElementById("csvExportBackdrop").addEventListener("click", closeCsvExportModal);
+    document.getElementById("csvExportDownload").addEventListener("click", downloadCsvFile);
+    document.getElementById("participantName").addEventListener("input", () => {
+      activeRosterId = null;
+      syncCard();
+    });
+    document.getElementById("avgManual").addEventListener("input", syncCard);
+    document.getElementById("metricRows").addEventListener("input", syncCard);
+
+    document.getElementById("participantName").addEventListener("keydown", (e) => {
+      if (e.key !== "Enter") return;
+      e.preventDefault();
+      const first = getOrderedMetricValueInputs()[0];
+      if (first) first.focus();
+    });
+
+    document.getElementById("metricRows").addEventListener("keydown", (e) => {
+      if (e.key !== "Enter") return;
+      const t = e.target;
+      if (!t.classList.contains("m-value")) return;
+      const i = Number(t.dataset.i);
+      if (!Number.isNaN(i)) normalizeMetricInputValue(i, t);
+      e.preventDefault();
+      focusNextMetricValue(t);
+    });
+
+    document.getElementById("metricRows").addEventListener("focusout", (e) => {
+      const t = e.target;
+      if (!t.classList.contains("m-value")) return;
+      const i = Number(t.dataset.i);
+      if (Number.isNaN(i)) return;
+      normalizeMetricInputValue(i, t);
+      syncCard();
+    });
+
+    document.addEventListener("keydown", (e) => {
+      if (e.key !== "Escape") return;
+      const csvM = document.getElementById("csvExportModal");
+      if (csvM && !csvM.hidden) {
+        closeCsvExportModal();
+        return;
+      }
+    });
+
+    window.addEventListener("beforeprint", () => {
+      closeCsvExportModal();
+      syncCard();
+    });
+
+    function initCardBgImage() {
+      document.documentElement.style.setProperty(
+        "--card-bg-image",
+        `url("assets/card-bg.png?v=${Date.now()}")`
+      );
+    }
+
+    /* ===== 실시간 동기화 & 스테이션/랭킹 모드 부트스트랩 ===== */
+    (async function bootstrapSync() {
+      initCardBgImage();
+      const params = new URLSearchParams(location.search);
+      const isStation = params.get("mode") === "station";
+      const isRanking = params.get("mode") === "ranking";
+      const usingDb = initSupabase();
+
+      const onRosterUpdate = () => {
+        if (isStation) {
+          renderStationView();
+        } else if (isRanking) {
+          renderRankingView();
+        } else {
+          renderRosterStats();
+          if (!editingMemberId && !addingTeamKey) renderRosterList();
+          const ae = document.activeElement;
+          const typingMain =
+            ae &&
+            (ae.id === "participantName" ||
+              ae.id === "avgManual" ||
+              (ae.classList && (ae.classList.contains("m-value") || ae.classList.contains("m-label"))));
+          if (!typingMain) {
+            if (currentCardSession != null && currentCardTeam) {
+              applyTeamToCard(currentCardSession, currentCardTeam);
+            } else if (activeRosterId) {
+              const p = rosterParticipants.find((x) => x.id === activeRosterId);
+              if (p) applyRosterParticipantToForm(p);
+            }
+          }
+        }
+      };
+
+      if (isRanking) {
+        initRankingViewSetup(params);
+        showRankingLoading();
+      }
+
+      if (isStation) {
+        document.getElementById("stationView").hidden = false;
+        if (!usingDb) document.getElementById("stationConfigWarn").hidden = false;
+        initStationView(params);
+      }
+
+      if (usingDb) {
+        await fetchRosterOnce(onRosterUpdate, { force: true });
+        subscribeRoster(onRosterUpdate);
+      } else if (isRanking) {
+        showRankingNoSyncWarning();
+      } else if (isStation) {
+        onRosterUpdate();
+      }
+    })();
+  </script>
+</body>
+</html>
