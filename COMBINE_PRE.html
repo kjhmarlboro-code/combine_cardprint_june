@@ -2971,6 +2971,10 @@
     let stationSessionNum = 1;
     let stationTeam = ""; // 선택된 등록팀 ("" = 전체 보기)
 
+    function updateStationDocumentTitle() {
+      document.title = "기록입력";
+    }
+
     function initStationView(params) {
       const ev = Number(params.get("event"));
       if (ev >= 1 && ev <= 6) stationEventIndex = ev - 1;
@@ -3020,6 +3024,7 @@
 
       updateStationPills();
       populateStationTeamSelect();
+      updateStationDocumentTitle();
     }
 
     /** 현재 회차의 등록팀 목록으로 드롭다운 채우기 (선택값 보존) */
@@ -3050,6 +3055,7 @@
       });
       document.getElementById("stationEventName").textContent =
         DEFAULT_METRICS[stationEventIndex].label;
+      updateStationDocumentTitle();
     }
 
     /** 포스트(현재 종목): 팀원 전원 입력 시 해당 종목 4명 합계 (MM:SS.ss) */
