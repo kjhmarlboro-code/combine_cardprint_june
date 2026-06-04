@@ -2202,15 +2202,16 @@
     }
 
     function renderRosterStats() {
-      const total = rosterParticipants.length;
-      const men = rosterParticipants.filter((p) => p.gender === "M").length;
-      const women = rosterParticipants.filter((p) => p.gender === "F").length;
+      const sessionRoster = getFilteredRoster();
+      const total = sessionRoster.length;
+      const men = sessionRoster.filter((p) => p.gender === "M").length;
+      const women = sessionRoster.filter((p) => p.gender === "F").length;
       document.getElementById("rosterStats").innerHTML =
-        `전체 <span class="n-total">${total}</span>명 &nbsp; MEN <span class="n-men">${men}</span> &nbsp; WOMEN <span class="n-women">${women}</span>`;
+        `${rosterRegSession}회차 <span class="n-total">${total}</span>명 &nbsp; MEN <span class="n-men">${men}</span> &nbsp; WOMEN <span class="n-women">${women}</span>`;
     }
 
     function getFilteredRoster() {
-      return rosterParticipants.slice();
+      return rosterParticipants.filter((p) => (p.session || 1) === rosterRegSession);
     }
 
     function indexToAlphaLabel(idx) {
@@ -2482,7 +2483,9 @@
         const li = document.createElement("li");
         li.className = "roster-empty";
         li.textContent =
-          rosterParticipants.length === 0 ? "등록된 인원이 없습니다." : "조건에 맞는 인원이 없습니다.";
+          rosterParticipants.length === 0
+            ? "등록된 인원이 없습니다."
+            : `${rosterRegSession}회차에 등록된 팀이 없습니다.`;
         ul.appendChild(li);
         return;
       }
@@ -2674,6 +2677,13 @@
         btn.addEventListener("click", () => {
           rosterRegSession = Number(btn.dataset.regSession);
           updateRegSessionButtons();
+          editingMemberId = null;
+          addingTeamKey = null;
+          expandedTeams = new Set(
+            [...expandedTeams].filter((key) => key.startsWith(`${rosterRegSession}-`))
+          );
+          renderRosterStats();
+          renderRosterList();
         });
       });
 
@@ -2688,15 +2698,23 @@
       });
 
       document.getElementById("btnRosterClearAll").addEventListener("click", () => {
-        if (rosterParticipants.length === 0) return;
-        if (confirm("등록된 참가자를 모두 삭제할까요?")) {
-          rosterParticipants = [];
-          activeRosterId = null;
-          dbDeleteAll();
-          saveRoster();
-          renderRosterStats();
-          renderRosterList();
-        }
+        const sessionRoster = getFilteredRoster();
+        if (sessionRoster.length === 0) return;
+        if (!confirm(`${rosterRegSession}회차 등록을 모두 삭제할까요?`)) return;
+        const removedIds = sessionRoster.map((p) => p.id);
+        rosterParticipants = rosterParticipants.filter(
+          (p) => (p.session || 1) !== rosterRegSession
+        );
+        if (removedIds.includes(activeRosterId)) activeRosterId = null;
+        editingMemberId = null;
+        addingTeamKey = null;
+        expandedTeams = new Set(
+          [...expandedTeams].filter((key) => !key.startsWith(`${rosterRegSession}-`))
+        );
+        dbDeleteIds(removedIds);
+        saveRoster();
+        renderRosterStats();
+        renderRosterList();
       });
     }
 
