@@ -1330,6 +1330,43 @@
       color: rgba(255, 255, 255, 0.65);
       letter-spacing: 0.04em;
     }
+    .station-member__field {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex: 1;
+      min-width: 0;
+    }
+    .station-member__field .station-member__input {
+      flex: 1;
+      min-width: 0;
+    }
+    .station-delete-btn {
+      flex-shrink: 0;
+      border: 1px solid rgba(255, 120, 120, 0.45);
+      background: rgba(255, 80, 80, 0.12);
+      color: #ff9e9e;
+      border-radius: 8px;
+      padding: 10px 10px;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .station-delete-btn:hover:not(:disabled) {
+      background: rgba(255, 80, 80, 0.22);
+    }
+    .station-delete-btn:disabled {
+      opacity: 0.35;
+      cursor: not-allowed;
+    }
+    .station-delete-btn--card {
+      display: block;
+      width: calc(100% - 20px);
+      margin: 0 10px 12px;
+      padding: 10px 12px;
+      font-size: 13px;
+    }
     @keyframes stationSaveFlash {
       0% { box-shadow: 0 0 0 3px rgba(3, 255, 51, 0.55); }
       100% { box-shadow: 0 0 0 0 rgba(3, 255, 51, 0); }
@@ -1464,6 +1501,20 @@
       display: flex;
       gap: 8px;
       justify-content: flex-end;
+      align-items: center;
+    }
+    .station-cognition-modal__btn--delete {
+      margin-right: auto;
+      background: rgba(255, 80, 80, 0.12);
+      color: #ff9e9e;
+      border: 1px solid rgba(255, 120, 120, 0.45);
+    }
+    .station-cognition-modal__btn--delete:hover:not(:disabled) {
+      background: rgba(255, 80, 80, 0.22);
+    }
+    .station-cognition-modal__btn--delete:disabled {
+      opacity: 0.35;
+      cursor: not-allowed;
     }
     .station-cognition-modal__btn {
       border: none;
@@ -2062,6 +2113,7 @@
         <div id="stationCognitionModalRows"></div>
         <div class="station-cognition-modal__sum is-incomplete" id="stationCognitionModalSum">4명 기록 입력 대기</div>
         <div class="station-cognition-modal__actions">
+          <button type="button" class="station-cognition-modal__btn station-cognition-modal__btn--delete" id="stationCognitionModalDelete" disabled>마지막 시도 삭제</button>
           <button type="button" class="station-cognition-modal__btn station-cognition-modal__btn--ghost" id="stationCognitionModalCancel">취소</button>
           <button type="button" class="station-cognition-modal__btn station-cognition-modal__btn--save" id="stationCognitionModalSave" disabled>저장</button>
         </div>
@@ -3594,6 +3646,21 @@
           hint.className = "station-cognition-hint";
           hint.textContent = "팀명을 눌러 4명 기록 입력";
           card.appendChild(hint);
+
+          const cogDelBtn = document.createElement("button");
+          cogDelBtn.type = "button";
+          cogDelBtn.className = "station-delete-btn station-delete-btn--card";
+          cogDelBtn.textContent = "마지막 시도 삭제";
+          cogDelBtn.disabled =
+            getStationTeamAttemptCount(stationSessionNum, g.team, stationEventIndex) === 0;
+          cogDelBtn.addEventListener("click", () => {
+            if (!confirmStationDeleteAttempt()) return;
+            if (deleteTeamCognitionLastAttempt(stationSessionNum, g.team)) {
+              setTimeout(() => renderStationView(), 0);
+            }
+          });
+          card.appendChild(cogDelBtn);
+
           host.appendChild(card);
           return;
         }
@@ -3635,6 +3702,9 @@
           label.className = "station-member__name";
           label.textContent = "팀 기록";
 
+          const field = document.createElement("div");
+          field.className = "station-member__field";
+
           const input = document.createElement("input");
           input.type = "text";
           input.className = "station-member__input station-team__input";
@@ -3648,8 +3718,28 @@
             saveStationTeamValue(stationSessionNum, g.team, formatted);
           });
 
+          const delBtn = document.createElement("button");
+          delBtn.type = "button";
+          delBtn.className = "station-delete-btn";
+          delBtn.textContent = "삭제";
+          const attemptCount = getStationTeamAttemptCount(
+            stationSessionNum,
+            g.team,
+            stationEventIndex
+          );
+          delBtn.disabled = attemptCount === 0;
+          delBtn.setAttribute("aria-label", `${teamLabel} 마지막 시도 삭제`);
+          delBtn.addEventListener("click", () => {
+            if (!confirmStationDeleteAttempt()) return;
+            if (deleteStationTeamLastAttempt(stationSessionNum, g.team, stationEventIndex)) {
+              setTimeout(() => renderStationView(), 0);
+            }
+          });
+
+          field.appendChild(input);
+          field.appendChild(delBtn);
           row.appendChild(label);
-          row.appendChild(input);
+          row.appendChild(field);
           card.appendChild(row);
         }
 
@@ -3660,6 +3750,17 @@
     let cognitionModalSession = 1;
     let cognitionModalTeam = "";
     let stationCognitionModalReady = false;
+
+    function updateCognitionModalDeleteButton() {
+      const delBtn = document.getElementById("stationCognitionModalDelete");
+      if (!delBtn) return;
+      const count = getStationTeamAttemptCount(
+        cognitionModalSession,
+        cognitionModalTeam,
+        STATION_PER_MEMBER_EVENT_INDEX
+      );
+      delBtn.disabled = count === 0;
+    }
 
     function updateCognitionModalSumPreview() {
       const sumEl = document.getElementById("stationCognitionModalSum");
@@ -3747,6 +3848,7 @@
       });
 
       updateCognitionModalSumPreview();
+      updateCognitionModalDeleteButton();
       modal.hidden = false;
       const firstInput = rowsHost.querySelector(".station-cognition-modal__input");
       if (firstInput) setTimeout(() => firstInput.focus(), 0);
@@ -3822,9 +3924,19 @@
       const backdrop = document.getElementById("stationCognitionModalBackdrop");
       const cancelBtn = document.getElementById("stationCognitionModalCancel");
       const saveBtn = document.getElementById("stationCognitionModalSave");
+      const deleteBtn = document.getElementById("stationCognitionModalDelete");
 
       backdrop?.addEventListener("click", closeStationCognitionModal);
       cancelBtn?.addEventListener("click", closeStationCognitionModal);
+      deleteBtn?.addEventListener("click", () => {
+        if (!confirmStationDeleteAttempt()) return;
+        if (
+          deleteTeamCognitionLastAttempt(cognitionModalSession, cognitionModalTeam)
+        ) {
+          openStationCognitionModal(cognitionModalSession, cognitionModalTeam);
+          setTimeout(() => renderStationView(), 0);
+        }
+      });
       saveBtn?.addEventListener("click", () => {
         const members = getTeamMembers(cognitionModalSession, cognitionModalTeam);
         const memberValues = {};
@@ -3874,6 +3986,103 @@
       const sb = parseNumber(b);
       if (sa !== null && sb !== null) return sa === sb;
       return String(a || "").trim() === String(b || "").trim();
+    }
+
+    function confirmStationDeleteAttempt() {
+      return window.confirm(
+        "마지막 시도를 삭제할까요?\n삭제 후에는 남은 시도 중 최고 기록이 랭킹에 반영됩니다."
+      );
+    }
+
+    function persistRosterLocal() {
+      try {
+        localStorage.setItem(ROSTER_STORAGE_KEY, JSON.stringify(rosterParticipants));
+      } catch (_) {}
+    }
+
+    function getStationTeamAttemptCount(session, team, eventIndex) {
+      if (isCognitionEventIndex(eventIndex)) {
+        return getTeamCognitionAttempts(session, team).length;
+      }
+      const anchor = getTeamAnchorMember(session, team);
+      if (!anchor) return 0;
+      return metricsHistoryArr6(anchor.metricsHistory)[eventIndex].length;
+    }
+
+    function syncStationTeamMetricsAfterHistoryChange(session, team, eventIndex, updatedAt) {
+      const members = getTeamMembers(session, team);
+      const anchor = getTeamAnchorMember(session, team);
+      if (!anchor) return;
+      const newBest = isCognitionEventIndex(eventIndex)
+        ? getTeamCognitionBestSum(session, team)
+        : getParticipantBestMetric(
+            rosterParticipants.find((x) => x.id === anchor.id) || anchor,
+            eventIndex
+          );
+      const ts = updatedAt != null ? updatedAt : Date.now();
+      if (isCognitionEventIndex(eventIndex)) {
+        syncTeamCognitionMetricsToMembers(session, team, newBest, ts);
+        return;
+      }
+      members.forEach((p) => {
+        const i = rosterParticipants.findIndex((x) => x.id === p.id);
+        if (i < 0) return;
+        const synced = syncParticipantMetricsFromHistory({
+          ...rosterParticipants[i],
+          metrics: (() => {
+            const m = metricsArr6(rosterParticipants[i].metrics);
+            m[eventIndex] = newBest;
+            return m;
+          })(),
+        });
+        rosterParticipants[i] = { ...synced, updatedAt: ts };
+        dbSetParticipant(rosterParticipants[i]);
+      });
+    }
+
+    /** 팀 종목: 마지막 시도 1건 삭제 → 남은 시도 중 최고 기록으로 복구 */
+    function deleteStationTeamLastAttempt(session, team, eventIndex) {
+      const anchor = getTeamAnchorMember(session, team);
+      if (!anchor) return false;
+      const anchorIdx = rosterParticipants.findIndex((x) => x.id === anchor.id);
+      if (anchorIdx < 0) return false;
+      const history = metricsHistoryArr6(anchor.metricsHistory);
+      if (history[eventIndex].length === 0) return false;
+
+      history[eventIndex].pop();
+      const updated = syncParticipantMetricsFromHistory({
+        ...rosterParticipants[anchorIdx],
+        metricsHistory: history,
+        updatedAt: Date.now(),
+      });
+      rosterParticipants[anchorIdx] = updated;
+      dbSetParticipant(updated);
+      syncStationTeamMetricsAfterHistoryChange(session, team, eventIndex, Date.now());
+      persistRosterLocal();
+      return true;
+    }
+
+    /** COGNITION: 마지막 팀 합계 시도 1건 삭제 */
+    function deleteTeamCognitionLastAttempt(session, team) {
+      const eventIndex = STATION_PER_MEMBER_EVENT_INDEX;
+      const anchor = getTeamAnchorMember(session, team);
+      if (!anchor) return false;
+      const anchorIdx = rosterParticipants.findIndex((x) => x.id === anchor.id);
+      if (anchorIdx < 0) return false;
+      const history = metricsHistoryArr6(anchor.metricsHistory);
+      if (history[eventIndex].length === 0) return false;
+
+      history[eventIndex].pop();
+      const updated = syncParticipantMetricsFromHistory({
+        ...rosterParticipants[anchorIdx],
+        metricsHistory: history,
+        updatedAt: Date.now(),
+      });
+      rosterParticipants[anchorIdx] = updated;
+      dbSetParticipant(updated);
+      syncStationTeamMetricsAfterHistoryChange(session, team, eventIndex, Date.now());
+      persistRosterLocal();
+      return true;
     }
 
     /** 팀 전체 기록 1개 종목 — 시도는 팀 대표 1명에 저장, 반영은 최고 기록만 팀 전원 */
