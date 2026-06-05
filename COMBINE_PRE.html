@@ -1084,6 +1084,29 @@
       opacity: 0.45;
       cursor: not-allowed;
     }
+    .metric-modal__btn-danger {
+      background: #c62828;
+      color: #fff;
+    }
+    .metric-modal__btn-danger:hover {
+      background: #b71c1c;
+    }
+    .metric-modal__warn {
+      margin: 0 0 14px;
+      font-size: 13px;
+      line-height: 1.5;
+      color: #5a3a00;
+      background: #fff8e6;
+      border: 1px solid #f0d78c;
+      border-radius: 8px;
+      padding: 10px 12px;
+    }
+    .metric-modal__error {
+      margin: 8px 0 0;
+      font-size: 12px;
+      font-weight: 700;
+      color: #c62828;
+    }
 
     .metric-modal__fieldset {
       border: none;
@@ -1239,6 +1262,24 @@
     .station-select:focus {
       outline: none;
       border-color: #03ff33;
+    }
+    .station-picker--danger {
+      margin-top: 4px;
+      padding-top: 8px;
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .station-clear-session-btn {
+      border: 1px solid rgba(255, 120, 120, 0.5);
+      background: rgba(255, 80, 80, 0.14);
+      color: #ff9e9e;
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-size: 13px;
+      font-weight: 800;
+      cursor: pointer;
+    }
+    .station-clear-session-btn:hover {
+      background: rgba(255, 80, 80, 0.24);
     }
     .station-body {
       flex: 1;
@@ -2100,6 +2141,11 @@
         <span class="station-picker__label">팀</span>
         <select id="stationTeamSelect" class="station-select" aria-label="등록팀 선택"></select>
       </div>
+      <div class="station-picker station-picker--danger">
+        <button type="button" class="station-clear-session-btn" id="stationClearSessionBtn">
+          1회차 기록 전체 비우기
+        </button>
+      </div>
     </div>
     <div class="station-config-warn" id="stationConfigWarn" hidden>
       Supabase 설정이 비어 있어 이 기기 안에서만 저장됩니다. 다른 기기와 공유하려면 코드 상단 SUPABASE_CONFIG를 채우세요.
@@ -2117,6 +2163,39 @@
           <button type="button" class="station-cognition-modal__btn station-cognition-modal__btn--ghost" id="stationCognitionModalCancel">취소</button>
           <button type="button" class="station-cognition-modal__btn station-cognition-modal__btn--save" id="stationCognitionModalSave" disabled>저장</button>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="stationClearSessionModal" class="metric-modal" hidden aria-hidden="true">
+    <div class="metric-modal__backdrop" id="stationClearSessionBackdrop" aria-hidden="true"></div>
+    <div
+      class="metric-modal__dialog"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="stationClearSessionModalTitle"
+    >
+      <h2 id="stationClearSessionModalTitle" class="metric-modal__title">회차 기록 비우기</h2>
+      <p class="metric-modal__warn" id="stationClearSessionWarn">
+        선택한 회차의 <strong>모든 팀 기록</strong>이 삭제됩니다. 팀 등록(이름·팀명)은 유지됩니다.
+      </p>
+      <div class="metric-modal__field">
+        <label for="stationClearSessionPassword">관리자 비밀번호</label>
+        <input
+          type="password"
+          id="stationClearSessionPassword"
+          autocomplete="off"
+          placeholder="비밀번호 입력"
+        />
+        <p class="metric-modal__error" id="stationClearSessionError" hidden>
+          비밀번호가 올바르지 않습니다.
+        </p>
+      </div>
+      <div class="metric-modal__actions">
+        <button type="button" class="metric-modal__btn-cancel" id="stationClearSessionCancel">취소</button>
+        <button type="button" class="metric-modal__btn-apply metric-modal__btn-danger" id="stationClearSessionConfirm">
+          비우기
+        </button>
       </div>
     </div>
   </div>
@@ -2172,6 +2251,10 @@
       url: "https://oksiyzyublplsuceawif.supabase.co",
       anonKey: "sb_publishable_Eoc0YurmAQWZ0ZqOe4MD7g_xpm-Vu0P",
       table: "roster",
+    };
+    /** 회차 기록 전체 비우기 — 비밀번호 (현장에서 원하는 값으로 변경) */
+    const STATION_ADMIN = {
+      clearSessionPassword: "emp4540^^",
     };
 
     /* 카드 그리드(배경): 1 좌상 HANDGRIP · 2 우상 VERTICAL JUMP · 3 좌중 NORDIC · 4 우중 REACTION · 5 좌하 5-10-5 · 6 우하 ZIGZAG */
@@ -3512,6 +3595,8 @@
       populateStationTeamSelect();
       updateStationDocumentTitle();
       initStationCognitionModal();
+      initStationClearSessionModal();
+      updateStationClearSessionButton();
     }
 
     /** 현재 회차의 등록팀 목록으로 드롭다운 채우기 (선택값 보존) */
@@ -3542,6 +3627,7 @@
       });
       document.getElementById("stationEventName").textContent =
         DEFAULT_METRICS[stationEventIndex].label;
+      updateStationClearSessionButton();
       updateStationDocumentTitle();
     }
 
@@ -3998,6 +4084,101 @@
       try {
         localStorage.setItem(ROSTER_STORAGE_KEY, JSON.stringify(rosterParticipants));
       } catch (_) {}
+    }
+
+    function emptyParticipantRecords(p) {
+      return syncParticipantMetricsFromHistory({
+        ...p,
+        metrics: ["", "", "", "", "", ""],
+        metricsHistory: [[], [], [], [], [], []],
+        avgManual: "",
+        summaryAvg: undefined,
+        updatedAt: Date.now(),
+      });
+    }
+
+    function clearSessionAllRecords(session) {
+      const cleared = [];
+      rosterParticipants = rosterParticipants.map((p) => {
+        if ((p.session || 1) !== session) return p;
+        const next = emptyParticipantRecords(p);
+        cleared.push(next);
+        return next;
+      });
+      cleared.forEach((p) => dbSetParticipant(p));
+      persistRosterLocal();
+      return cleared.length;
+    }
+
+    function updateStationClearSessionButton() {
+      const btn = document.getElementById("stationClearSessionBtn");
+      if (!btn) return;
+      btn.textContent = `${stationSessionNum}회차 기록 전체 비우기`;
+    }
+
+    let stationClearSessionModalReady = false;
+    function closeStationClearSessionModal() {
+      const modal = document.getElementById("stationClearSessionModal");
+      const pw = document.getElementById("stationClearSessionPassword");
+      const err = document.getElementById("stationClearSessionError");
+      if (modal) modal.hidden = true;
+      if (pw) pw.value = "";
+      if (err) err.hidden = true;
+    }
+
+    function openStationClearSessionModal() {
+      const modal = document.getElementById("stationClearSessionModal");
+      const title = document.getElementById("stationClearSessionModalTitle");
+      const warn = document.getElementById("stationClearSessionWarn");
+      const pw = document.getElementById("stationClearSessionPassword");
+      const err = document.getElementById("stationClearSessionError");
+      if (!modal || !title || !warn) return;
+      title.textContent = `${stationSessionNum}회차 기록 비우기`;
+      warn.innerHTML = `<strong>${stationSessionNum}회차</strong>의 모든 팀 기록(6종목·시도 이력·총시간)이 삭제됩니다.<br>팀 등록(이름·팀명)은 유지됩니다.`;
+      if (err) err.hidden = true;
+      if (pw) pw.value = "";
+      modal.hidden = false;
+      setTimeout(() => pw?.focus(), 0);
+    }
+
+    function initStationClearSessionModal() {
+      if (stationClearSessionModalReady) return;
+      stationClearSessionModalReady = true;
+
+      document.getElementById("stationClearSessionBtn")?.addEventListener("click", () => {
+        openStationClearSessionModal();
+      });
+      document.getElementById("stationClearSessionBackdrop")?.addEventListener("click", () => {
+        closeStationClearSessionModal();
+      });
+      document.getElementById("stationClearSessionCancel")?.addEventListener("click", () => {
+        closeStationClearSessionModal();
+      });
+      document.getElementById("stationClearSessionPassword")?.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          document.getElementById("stationClearSessionConfirm")?.click();
+        }
+      });
+      document.getElementById("stationClearSessionConfirm")?.addEventListener("click", () => {
+        const pw = document.getElementById("stationClearSessionPassword");
+        const err = document.getElementById("stationClearSessionError");
+        const input = (pw?.value || "").trim();
+        const expected = String(STATION_ADMIN.clearSessionPassword || "");
+        if (!expected || input !== expected) {
+          if (err) err.hidden = false;
+          pw?.focus();
+          pw?.select();
+          return;
+        }
+        const count = clearSessionAllRecords(stationSessionNum);
+        closeStationClearSessionModal();
+        closeStationCognitionModal();
+        renderStationView();
+        if (count === 0) {
+          window.alert(`${stationSessionNum}회차에 비울 기록이 없습니다.`);
+        }
+      });
     }
 
     function getStationTeamAttemptCount(session, team, eventIndex) {
