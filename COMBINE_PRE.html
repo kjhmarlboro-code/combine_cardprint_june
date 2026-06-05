@@ -4086,22 +4086,18 @@
       } catch (_) {}
     }
 
-    function emptyParticipantRecords(p) {
-      return syncParticipantMetricsFromHistory({
-        ...p,
-        metrics: ["", "", "", "", "", ""],
-        metricsHistory: [[], [], [], [], [], []],
-        avgManual: "",
-        summaryAvg: undefined,
-        updatedAt: Date.now(),
-      });
-    }
-
     function clearSessionAllRecords(session) {
       const cleared = [];
       rosterParticipants = rosterParticipants.map((p) => {
         if ((p.session || 1) !== session) return p;
-        const next = emptyParticipantRecords(p);
+        const next = {
+          ...p,
+          metrics: ["", "", "", "", "", ""],
+          metricsHistory: [[], [], [], [], [], []],
+          avgManual: "",
+          summaryAvg: undefined,
+          updatedAt: Date.now(),
+        };
         cleared.push(next);
         return next;
       });
