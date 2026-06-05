@@ -2037,17 +2037,47 @@
 
     /** 시간 종목: 짧을수록 좋음 — 시도 목록에서 최고 기록 선택 */
     function pickBestMetricValue(values) {
-      let best = "";
       let bestSec = null;
       (values || []).forEach((v) => {
         const s = parseNumber(v);
         if (s === null) return;
-        if (bestSec === null || s < bestSec) {
-          bestSec = s;
-          best = String(v);
-        }
+        if (bestSec === null || s < bestSec) bestSec = s;
       });
-      return best;
+      return bestSec !== null ? formatSecondsToClock(bestSec) : "";
+    }
+
+    function getParticipantBestMetric(p, eventIndex) {
+      const history = metricsHistoryArr6(p.metricsHistory)[eventIndex];
+      if (history.length) {
+        return pickBestMetricValue(history.map((a) => a.value));
+      }
+      return metricsArr6(p.metrics)[eventIndex] || "";
+    }
+
+    /** metricsHistory 기준으로 metrics·summaryAvg 재계산 (DB/동기화 후 최고 기록 보장) */
+    function syncParticipantMetricsFromHistory(p) {
+      const metrics = metricsArr6(p.metrics);
+      const history = metricsHistoryArr6(p.metricsHistory);
+      let changed = false;
+      for (let i = 0; i < 6; i++) {
+        const best = history[i].length
+          ? pickBestMetricValue(history[i].map((a) => a.value))
+          : metrics[i] || "";
+        if (best !== metrics[i]) {
+          metrics[i] = best;
+          changed = true;
+        }
+      }
+      let summaryAvg = p.summaryAvg;
+      const total = computeTotalTimeFromMetrics(metrics);
+      if (total !== null) summaryAvg = formatSecondsToClock(total);
+      if (!changed && summaryAvg === p.summaryAvg) return p;
+      return {
+        ...p,
+        metrics,
+        metricsHistory: history,
+        summaryAvg: summaryAvg || undefined,
+      };
     }
 
     function seedMetricsHistoryFromMetrics(metrics, history) {
@@ -2115,7 +2145,7 @@
       const metrics = metricsArr6(d.metrics);
       let metricsHistory = metricsHistoryArr6(d.metrics_history);
       metricsHistory = seedMetricsHistoryFromMetrics(metrics, metricsHistory);
-      return {
+      return syncParticipantMetricsFromHistory({
         id: d.id,
         name: d.name || "",
         gender: d.gender === "F" ? "F" : "M",
@@ -2126,7 +2156,7 @@
         avgManual: d.avg_manual || "",
         summaryAvg: d.summary_avg ? d.summary_avg : undefined,
         updatedAt: d.updated_at || undefined,
-      };
+      });
     }
 
     function setSyncBadge(state, text) {
@@ -2220,10 +2250,20 @@
     /** 단일 참가자 저장(upsert) — 스테이션 입력·기록 저장 등 */
     function dbUpsertParticipant(p) {
       if (!dbReady || !sbClient || !p || !p.id) return;
+      const row = rowFromParticipant(p);
       sbClient
         .from(dbTable())
-        .upsert(rowFromParticipant(p))
-        .then(({ error }) => { if (error) setSyncBadge("err", "저장 오류"); });
+        .upsert(row)
+        .then(({ error }) => {
+          if (error && /metrics_history/i.test(String(error.message || ""))) {
+            const { metrics_history, ...rowNoHist } = row;
+            sbClient.from(dbTable()).upsert(rowNoHist).then(({ error: e2 }) => {
+              if (e2) setSyncBadge("err", "저장 오류");
+            });
+            return;
+          }
+          if (error) setSyncBadge("err", "저장 오류");
+        });
     }
     /** 여러 참가자 저장(upsert) — 팀 등록 등 */
     function dbUpsertMany(ps) {
@@ -2254,12 +2294,16 @@
         if (raw) {
           const data = JSON.parse(raw);
           if (Array.isArray(data)) {
-            rosterParticipants = data.map((p) => {
-              const metrics = metricsArr6(p.metrics);
-              let metricsHistory = metricsHistoryArr6(p.metricsHistory);
-              metricsHistory = seedMetricsHistoryFromMetrics(metrics, metricsHistory);
-              return { ...p, metrics, metricsHistory };
-            });
+            rosterParticipants = data.map((p) =>
+              syncParticipantMetricsFromHistory({
+                ...p,
+                metrics: metricsArr6(p.metrics),
+                metricsHistory: seedMetricsHistoryFromMetrics(
+                  p.metrics,
+                  metricsHistoryArr6(p.metricsHistory)
+                ),
+              })
+            );
           }
         }
       } catch (_) {
@@ -2380,20 +2424,16 @@
       if (members.length === 0) return out;
       for (let i = 0; i < 6; i++) {
         if (isStationTeamTotalEvent(i)) {
-          let sec = null;
-          for (const p of members) {
-            const s = parseNumber((p.metrics && p.metrics[i]) || "");
-            if (s !== null) {
-              sec = s;
-              break;
-            }
-          }
-          out[i] = sec !== null ? formatSecondsToClock(sec) : "";
+          const best = pickBestMetricValue(
+            members.map((p) => getParticipantBestMetric(p, i)).filter(Boolean)
+          );
+          out[i] = best || "";
         } else {
           let sum = 0;
           let allEntered = true;
           members.forEach((p) => {
-            const sec = parseNumber((p.metrics && p.metrics[i]) || "");
+            const best = getParticipantBestMetric(p, i);
+            const sec = parseNumber(best);
             if (sec === null) allEntered = false;
             else sum += sec;
           });
@@ -3303,9 +3343,7 @@
           input.inputMode = "decimal";
           input.placeholder = "MM:SS.ss";
           input.setAttribute("aria-label", `${teamLabel} 팀 기록`);
-          const cur =
-            (g.members[0] && g.members[0].metrics && g.members[0].metrics[stationEventIndex]) ||
-            "";
+          const cur = getParticipantBestMetric(g.members[0] || {}, stationEventIndex);
           input.value = cur ? formatMetricDisplayValue(stationEventIndex, cur) : "";
           bindStationInput(input, (formatted) => {
             saveStationTeamValue(stationSessionNum, g.team, formatted);
@@ -3333,7 +3371,7 @@
             input.className = "station-member__input";
             input.inputMode = "decimal";
             input.placeholder = "MM:SS.ss";
-            const cur = (p.metrics && p.metrics[stationEventIndex]) || "";
+            const cur = getParticipantBestMetric(p, stationEventIndex);
             input.value = cur ? formatMetricDisplayValue(stationEventIndex, cur) : "";
             bindStationInput(input, (formatted) => {
               saveStationValue(p.id, formatted);
@@ -3353,18 +3391,29 @@
     function saveStationValue(participantId, value) {
       const i = rosterParticipants.findIndex((x) => x.id === participantId);
       if (i < 0) return;
-      const updated = applyMetricAttemptToParticipant(
-        rosterParticipants[i],
-        stationEventIndex,
-        value
+      const prev = rosterParticipants[i];
+      const prevBest = getParticipantBestMetric(prev, stationEventIndex);
+      const updated = syncParticipantMetricsFromHistory(
+        applyMetricAttemptToParticipant(prev, stationEventIndex, value)
       );
-      if (updated === rosterParticipants[i]) return;
-      rosterParticipants[i] = updated;
+      if (updated === prev) return;
+      const newBest = getParticipantBestMetric(updated, stationEventIndex);
+      const toSave = metricSecondsEqual(prevBest, newBest)
+        ? { ...updated, updatedAt: prev.updatedAt || updated.updatedAt }
+        : updated;
+      rosterParticipants[i] = toSave;
       try {
         localStorage.setItem(ROSTER_STORAGE_KEY, JSON.stringify(rosterParticipants));
       } catch (_) {}
-      dbSetParticipant(updated);
+      dbSetParticipant(toSave);
       setTimeout(() => renderStationView(), 0);
+    }
+
+    function metricSecondsEqual(a, b) {
+      const sa = parseNumber(a);
+      const sb = parseNumber(b);
+      if (sa !== null && sb !== null) return sa === sb;
+      return String(a || "").trim() === String(b || "").trim();
     }
 
     /** 팀 전체 기록 1개 종목 — 시도는 팀 대표 1명에 저장, 반영은 최고 기록만 팀 전원 */
@@ -3376,28 +3425,40 @@
       if (!anchor) return;
       const anchorIdx = rosterParticipants.findIndex((x) => x.id === anchor.id);
       if (anchorIdx < 0) return;
-      const anchorUpdated = applyMetricAttemptToParticipant(anchor, eventIndex, value);
-      if (anchorUpdated === rosterParticipants[anchorIdx]) return;
-      const best = metricsArr6(anchorUpdated.metrics)[eventIndex];
+      const prevBest = getParticipantBestMetric(anchor, eventIndex);
+      const anchorUpdated = syncParticipantMetricsFromHistory(
+        applyMetricAttemptToParticipant(anchor, eventIndex, value)
+      );
+      const newBest = getParticipantBestMetric(anchorUpdated, eventIndex);
+
+      if (metricSecondsEqual(prevBest, newBest)) {
+        const kept = { ...anchorUpdated, updatedAt: anchor.updatedAt || anchorUpdated.updatedAt };
+        rosterParticipants[anchorIdx] = kept;
+        dbSetParticipant(kept);
+        try {
+          localStorage.setItem(ROSTER_STORAGE_KEY, JSON.stringify(rosterParticipants));
+        } catch (_) {}
+        setTimeout(() => renderStationView(), 0);
+        return;
+      }
+
       rosterParticipants[anchorIdx] = anchorUpdated;
+      dbSetParticipant(anchorUpdated);
+
       members.forEach((p) => {
         const i = rosterParticipants.findIndex((x) => x.id === p.id);
         if (i < 0) return;
-        const metrics = metricsArr6(p.metrics);
-        metrics[eventIndex] = best;
-        let summaryAvg = p.summaryAvg;
-        const total = computeTotalTimeFromMetrics(metrics);
-        if (total !== null) summaryAvg = formatSecondsToClock(total);
-        const updated = {
-          ...p,
-          metrics,
-          summaryAvg: summaryAvg || undefined,
-          updatedAt: Date.now(),
-        };
-        rosterParticipants[i] = updated;
-        dbSetParticipant(updated);
+        const synced = syncParticipantMetricsFromHistory({
+          ...rosterParticipants[i],
+          metrics: (() => {
+            const m = metricsArr6(rosterParticipants[i].metrics);
+            m[eventIndex] = newBest;
+            return m;
+          })(),
+        });
+        rosterParticipants[i] = { ...synced, updatedAt: Date.now() };
+        dbSetParticipant(rosterParticipants[i]);
       });
-      dbSetParticipant(anchorUpdated);
       try {
         localStorage.setItem(ROSTER_STORAGE_KEY, JSON.stringify(rosterParticipants));
       } catch (_) {}
