@@ -2285,44 +2285,80 @@
       return metricsHistoryArr6(anchor.metricsHistory)[STATION_PER_MEMBER_EVENT_INDEX];
     }
 
-    /** 기존 개인 metrics만 있는 데이터 → 팀 합계 시도 1건으로 시드 */
-    function ensureTeamCognitionSeeded(session, team) {
+    /** DB 로드 시 1회: 예전 개인 metrics → 팀 합계 시도로 이전 (표시할 때 자동 생성하지 않음) */
+    function migrateLegacyCognitionTeam(session, team) {
       const anchor = getTeamAnchorMember(session, team);
-      if (!anchor) return;
+      if (!anchor) return false;
       const attempts = getTeamCognitionAttempts(session, team);
-      if (attempts.length > 0) return;
+      if (attempts.length > 0) return false;
 
       const members = getTeamMembers(session, team);
-      if (members.length === 0) return;
+      if (members.length === 0) return false;
+
       const memberValues = {};
       let sumSec = 0;
-      let complete = true;
+      let count = 0;
       members.forEach((m) => {
         const v = metricsArr6(m.metrics)[STATION_PER_MEMBER_EVENT_INDEX];
         const sec = parseNumber(v);
-        if (sec === null) complete = false;
-        else {
+        if (sec !== null) {
           memberValues[m.id] = v;
           sumSec += sec;
+          count++;
         }
       });
-      if (!complete) return;
+      if (count === 0) return false;
 
       const anchorIdx = rosterParticipants.findIndex((x) => x.id === anchor.id);
-      if (anchorIdx < 0) return;
+      if (anchorIdx < 0) return false;
       const history = metricsHistoryArr6(anchor.metricsHistory);
-      history[STATION_PER_MEMBER_EVENT_INDEX].push({
-        value: formatSecondsToClock(sumSec),
-        memberValues,
-        at: Date.now(),
+
+      const rawValues = members.map((m) => metricsArr6(m.metrics)[STATION_PER_MEMBER_EVENT_INDEX]);
+      const allSame = rawValues.length > 0 && rawValues.every((v) => v === rawValues[0]);
+
+      if (allSame && count === members.length) {
+        history[STATION_PER_MEMBER_EVENT_INDEX].push({
+          value: rawValues[0],
+          memberValues: {},
+          at: Date.now(),
+        });
+      } else if (count === members.length) {
+        history[STATION_PER_MEMBER_EVENT_INDEX].push({
+          value: formatSecondsToClock(sumSec),
+          memberValues,
+          at: Date.now(),
+        });
+      } else {
+        return false;
+      }
+
+      const bestSum = pickBestMetricValue(
+        history[STATION_PER_MEMBER_EVENT_INDEX].map((a) => a.value)
+      );
+      rosterParticipants[anchorIdx] = syncParticipantMetricsFromHistory({
+        ...rosterParticipants[anchorIdx],
+        metricsHistory: history,
       });
-      const metrics = metricsArr6(anchor.metrics);
-      metrics[STATION_PER_MEMBER_EVENT_INDEX] = formatSecondsToClock(sumSec);
-      rosterParticipants[anchorIdx] = { ...anchor, metrics, metricsHistory: history };
+      syncTeamCognitionMetricsToMembers(session, team, bestSum, Date.now());
+      dbSetParticipant(rosterParticipants[anchorIdx]);
+      return true;
+    }
+
+    let legacyCognitionMigrationRan = false;
+    function migrateLegacyCognitionTeams() {
+      if (legacyCognitionMigrationRan) return;
+      legacyCognitionMigrationRan = true;
+      const keys = new Set();
+      rosterParticipants.forEach((p) => {
+        if (p.team) keys.add(`${p.session || 1}\t${p.team}`);
+      });
+      keys.forEach((key) => {
+        const tab = key.indexOf("\t");
+        migrateLegacyCognitionTeam(Number(key.slice(0, tab)), key.slice(tab + 1));
+      });
     }
 
     function getTeamCognitionBestSum(session, team) {
-      ensureTeamCognitionSeeded(session, team);
       const attempts = getTeamCognitionAttempts(session, team);
       return pickBestMetricValue(attempts.map((a) => a.value));
     }
@@ -2503,6 +2539,7 @@
       const h = metricsHistoryArr6(history);
       let changed = false;
       for (let i = 0; i < 6; i++) {
+        if (i === STATION_PER_MEMBER_EVENT_INDEX) continue;
         if (m[i] && h[i].length === 0) {
           h[i].push({ value: m[i], at: Date.now() });
           changed = true;
@@ -2625,6 +2662,8 @@
       const rows = data || [];
       const json = JSON.stringify(rows);
       rosterParticipants = rows.map(participantFromRow);
+      migrateLegacyCognitionTeams();
+      rosterParticipants = rosterParticipants.map((p) => syncParticipantMetricsFromHistory(p));
       try {
         localStorage.setItem(ROSTER_STORAGE_KEY, JSON.stringify(rosterParticipants));
       } catch (_) {}
