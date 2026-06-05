@@ -1925,10 +1925,12 @@
      *      session int,
      *      team text,
      *      metrics jsonb,
+     *      metrics_history jsonb,
      *      avg_manual text,
      *      summary_avg text,
      *      updated_at int8
      *    );
+     *    alter table public.roster add column if not exists metrics_history jsonb;
      *    alter table public.roster enable row level security;
      *    drop policy if exists "roster anon all" on public.roster;
      *    create policy "roster anon all" on public.roster
@@ -1952,6 +1954,8 @@
       { label: "FARMER'S CARRY", unit: "MM:SS.ss" },
       { label: "ROWING", unit: "MM:SS.ss" },
     ];
+    /** REACTION INTELLIGENCE(3)만 팀원별 입력·합산, 나머지는 팀 기록 1개 */
+    const STATION_PER_MEMBER_EVENT_INDEX = 3;
 
     const ROSTER_STORAGE_KEY = "combine_print_roster_v1";
 
@@ -2006,6 +2010,91 @@
       return arr;
     }
 
+    function metricsHistoryArr6(h) {
+      const out = [[], [], [], [], [], []];
+      if (!h) return out;
+      if (Array.isArray(h)) {
+        for (let i = 0; i < 6; i++) {
+          if (!Array.isArray(h[i])) continue;
+          out[i] = h[i]
+            .map((a) => {
+              if (a == null) return null;
+              if (typeof a === "string") return { value: a, at: Date.now() };
+              return {
+                value: a.value != null ? String(a.value) : "",
+                at: a.at != null ? Number(a.at) : Date.now(),
+              };
+            })
+            .filter((a) => a && a.value);
+        }
+      }
+      return out;
+    }
+
+    function isStationTeamTotalEvent(eventIndex) {
+      return eventIndex !== STATION_PER_MEMBER_EVENT_INDEX;
+    }
+
+    /** 시간 종목: 짧을수록 좋음 — 시도 목록에서 최고 기록 선택 */
+    function pickBestMetricValue(values) {
+      let best = "";
+      let bestSec = null;
+      (values || []).forEach((v) => {
+        const s = parseNumber(v);
+        if (s === null) return;
+        if (bestSec === null || s < bestSec) {
+          bestSec = s;
+          best = String(v);
+        }
+      });
+      return best;
+    }
+
+    function seedMetricsHistoryFromMetrics(metrics, history) {
+      const m = metricsArr6(metrics);
+      const h = metricsHistoryArr6(history);
+      let changed = false;
+      for (let i = 0; i < 6; i++) {
+        if (m[i] && h[i].length === 0) {
+          h[i].push({ value: m[i], at: Date.now() });
+          changed = true;
+        }
+      }
+      return changed ? h : history;
+    }
+
+    function applyMetricAttemptToParticipant(p, eventIndex, rawValue) {
+      const value = (rawValue || "").trim();
+      if (!value) return p;
+      const metrics = metricsArr6(p.metrics);
+      const history = metricsHistoryArr6(p.metricsHistory);
+      history[eventIndex].push({ value, at: Date.now() });
+      metrics[eventIndex] = pickBestMetricValue(history[eventIndex].map((a) => a.value));
+      let summaryAvg = p.summaryAvg;
+      const total = computeTotalTimeFromMetrics(metrics);
+      if (total !== null) summaryAvg = formatSecondsToClock(total);
+      return {
+        ...p,
+        metrics,
+        metricsHistory: history,
+        summaryAvg: summaryAvg || undefined,
+        updatedAt: Date.now(),
+      };
+    }
+
+    function getTeamMembers(session, team) {
+      return rosterParticipants
+        .filter(
+          (p) => (p.session || 1) === session && String(p.team || "") === String(team || "")
+        )
+        .sort((a, b) => String(a.id).localeCompare(String(b.id)));
+    }
+
+    function getTeamAnchorMember(session, team) {
+      const members = getTeamMembers(session, team);
+      return members.length ? members[0] : null;
+    }
+
     /** 앱 참가자 객체 → Supabase row (snake_case 컬럼) */
     function rowFromParticipant(p) {
       return {
@@ -2015,6 +2104,7 @@
         session: p.session || 1,
         team: p.team || "",
         metrics: metricsArr6(p.metrics),
+        metrics_history: metricsHistoryArr6(p.metricsHistory),
         avg_manual: p.avgManual || "",
         summary_avg: p.summaryAvg || "",
         updated_at: p.updatedAt || Date.now(),
@@ -2022,13 +2112,17 @@
     }
     /** Supabase row → 앱 참가자 객체 */
     function participantFromRow(d) {
+      const metrics = metricsArr6(d.metrics);
+      let metricsHistory = metricsHistoryArr6(d.metrics_history);
+      metricsHistory = seedMetricsHistoryFromMetrics(metrics, metricsHistory);
       return {
         id: d.id,
         name: d.name || "",
         gender: d.gender === "F" ? "F" : "M",
         session: d.session || 1,
         team: d.team || "",
-        metrics: metricsArr6(d.metrics),
+        metrics,
+        metricsHistory,
         avgManual: d.avg_manual || "",
         summaryAvg: d.summary_avg ? d.summary_avg : undefined,
         updatedAt: d.updated_at || undefined,
@@ -2159,7 +2253,14 @@
         const raw = localStorage.getItem(ROSTER_STORAGE_KEY);
         if (raw) {
           const data = JSON.parse(raw);
-          if (Array.isArray(data)) rosterParticipants = data;
+          if (Array.isArray(data)) {
+            rosterParticipants = data.map((p) => {
+              const metrics = metricsArr6(p.metrics);
+              let metricsHistory = metricsHistoryArr6(p.metricsHistory);
+              metricsHistory = seedMetricsHistoryFromMetrics(metrics, metricsHistory);
+              return { ...p, metrics, metricsHistory };
+            });
+          }
         }
       } catch (_) {
         rosterParticipants = [];
@@ -2268,13 +2369,6 @@
       }
       document.getElementById("avgManual").value = p.avgManual != null ? String(p.avgManual) : "";
       syncCard();
-    }
-
-    /** REACTION INTELLIGENCE(3)만 팀원별 입력·합산, 나머지는 팀 기록 1개 */
-    const STATION_PER_MEMBER_EVENT_INDEX = 3;
-
-    function isStationTeamTotalEvent(eventIndex) {
-      return eventIndex !== STATION_PER_MEMBER_EVENT_INDEX;
     }
 
     /** 회차·팀의 종목별 팀 표시용 배열(6칸) */
@@ -2675,6 +2769,7 @@
         gender: mem.gender,
         session,
         team: teamName,
+        metricsHistory: [[], [], [], [], [], []],
         updatedAt: Date.now(),
       }));
       newMembers.forEach((mem) => rosterParticipants.push(mem));
@@ -3258,14 +3353,12 @@
     function saveStationValue(participantId, value) {
       const i = rosterParticipants.findIndex((x) => x.id === participantId);
       if (i < 0) return;
-      const p = rosterParticipants[i];
-      const metrics = Array.isArray(p.metrics) ? p.metrics.slice() : ["", "", "", "", "", ""];
-      while (metrics.length < 6) metrics.push("");
-      metrics[stationEventIndex] = value || "";
-      let summaryAvg = p.summaryAvg;
-      const total = computeTotalTimeFromMetrics(metrics);
-      if (total !== null) summaryAvg = formatSecondsToClock(total);
-      const updated = { ...p, metrics, summaryAvg: summaryAvg || undefined, updatedAt: Date.now() };
+      const updated = applyMetricAttemptToParticipant(
+        rosterParticipants[i],
+        stationEventIndex,
+        value
+      );
+      if (updated === rosterParticipants[i]) return;
       rosterParticipants[i] = updated;
       try {
         localStorage.setItem(ROSTER_STORAGE_KEY, JSON.stringify(rosterParticipants));
@@ -3274,19 +3367,24 @@
       setTimeout(() => renderStationView(), 0);
     }
 
-    /** 팀 전체 기록 1개 종목 — 팀원 전원 metrics에 동일 값 저장 */
+    /** 팀 전체 기록 1개 종목 — 시도는 팀 대표 1명에 저장, 반영은 최고 기록만 팀 전원 */
     function saveStationTeamValue(session, team, value) {
-      const members = rosterParticipants.filter(
-        (p) => (p.session || 1) === session && String(p.team || "") === String(team || "")
-      );
+      const members = getTeamMembers(session, team);
       if (members.length === 0) return;
       const eventIndex = stationEventIndex;
+      const anchor = getTeamAnchorMember(session, team);
+      if (!anchor) return;
+      const anchorIdx = rosterParticipants.findIndex((x) => x.id === anchor.id);
+      if (anchorIdx < 0) return;
+      const anchorUpdated = applyMetricAttemptToParticipant(anchor, eventIndex, value);
+      if (anchorUpdated === rosterParticipants[anchorIdx]) return;
+      const best = metricsArr6(anchorUpdated.metrics)[eventIndex];
+      rosterParticipants[anchorIdx] = anchorUpdated;
       members.forEach((p) => {
         const i = rosterParticipants.findIndex((x) => x.id === p.id);
         if (i < 0) return;
-        const metrics = Array.isArray(p.metrics) ? p.metrics.slice() : ["", "", "", "", "", ""];
-        while (metrics.length < 6) metrics.push("");
-        metrics[eventIndex] = value || "";
+        const metrics = metricsArr6(p.metrics);
+        metrics[eventIndex] = best;
         let summaryAvg = p.summaryAvg;
         const total = computeTotalTimeFromMetrics(metrics);
         if (total !== null) summaryAvg = formatSecondsToClock(total);
@@ -3299,6 +3397,7 @@
         rosterParticipants[i] = updated;
         dbSetParticipant(updated);
       });
+      dbSetParticipant(anchorUpdated);
       try {
         localStorage.setItem(ROSTER_STORAGE_KEY, JSON.stringify(rosterParticipants));
       } catch (_) {}
@@ -3604,6 +3703,19 @@
       flashSaveRecordFeedback("기록을 저장했습니다.");
     }
 
+    const CSV_ATTEMPT_HEADERS = [
+      "회차",
+      "팀",
+      "종목번호",
+      "종목명",
+      "입력유형",
+      "이름",
+      "성별",
+      "시도번호",
+      "시도기록",
+      "시도일시",
+      "현재반영(최고)",
+    ];
     const CSV_EXPORT_HEADERS = [
       "이름",
       "성별",
@@ -3681,8 +3793,95 @@
       return rosterParticipants.slice();
     }
 
+    function participantInCsvScope(p, scopeParticipants) {
+      return scopeParticipants.some((x) => x.id === p.id);
+    }
+
+    function buildCsvAttemptRows(scopeParticipants) {
+      const rows = [];
+      const teamKeys = new Set();
+      scopeParticipants.forEach((p) => {
+        if (p.team) teamKeys.add(`${p.session || 1}\t${p.team}`);
+      });
+      const sortedTeams = Array.from(teamKeys).sort((a, b) => a.localeCompare(b, "ko"));
+
+      sortedTeams.forEach((key) => {
+        const tab = key.indexOf("\t");
+        const session = Number(key.slice(0, tab));
+        const team = key.slice(tab + 1);
+        for (let ev = 0; ev < 6; ev++) {
+          const label = DEFAULT_METRICS[ev]?.label || `종목${ev + 1}`;
+          if (isStationTeamTotalEvent(ev)) {
+            const anchor = getTeamAnchorMember(session, team);
+            if (!anchor || !participantInCsvScope(anchor, scopeParticipants)) continue;
+            const history = metricsHistoryArr6(anchor.metricsHistory)[ev];
+            const best = metricsArr6(anchor.metrics)[ev];
+            history.forEach((att, idx) => {
+              rows.push(
+                [
+                  session,
+                  team,
+                  ev + 1,
+                  label,
+                  "팀",
+                  "",
+                  "",
+                  idx + 1,
+                  att.value,
+                  formatCsvTimestamp(att.at),
+                  att.value === best ? "Y" : "",
+                ]
+                  .map(csvEscapeCell)
+                  .join(",")
+              );
+            });
+          } else {
+            getTeamMembers(session, team)
+              .filter((p) => participantInCsvScope(p, scopeParticipants))
+              .forEach((p) => {
+                const history = metricsHistoryArr6(p.metricsHistory)[ev];
+                const best = metricsArr6(p.metrics)[ev];
+                history.forEach((att, idx) => {
+                  rows.push(
+                    [
+                      session,
+                      team,
+                      ev + 1,
+                      label,
+                      "개인",
+                      p.name || "",
+                      p.gender === "M" ? "M" : p.gender === "F" ? "F" : "",
+                      idx + 1,
+                      att.value,
+                      formatCsvTimestamp(att.at),
+                      att.value === best ? "Y" : "",
+                    ]
+                      .map(csvEscapeCell)
+                      .join(",")
+                  );
+                });
+              });
+          }
+        }
+      });
+      return rows;
+    }
+
     function buildCsvText(participants, useBom) {
-      const lines = [CSV_EXPORT_HEADERS.map(csvEscapeCell).join(",")];
+      const lines = [];
+      lines.push("[시도 기록]");
+      lines.push(CSV_ATTEMPT_HEADERS.map(csvEscapeCell).join(","));
+      const attemptRows = buildCsvAttemptRows(participants);
+      if (attemptRows.length) {
+        lines.push(...attemptRows);
+      } else {
+        lines.push(
+          ["", "", "", "", "", "", "", "", "", "", ""].map(csvEscapeCell).join(",")
+        );
+      }
+      lines.push("");
+      lines.push("[현재 최고 기록 요약]");
+      lines.push(CSV_EXPORT_HEADERS.map(csvEscapeCell).join(","));
       participants.forEach((p) => lines.push(csvRowFromParticipant(p)));
       const body = lines.join("\r\n") + "\r\n";
       return useBom ? `\uFEFF${body}` : body;
