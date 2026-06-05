@@ -1290,6 +1290,12 @@
     .station-member__input.is-saved {
       animation: stationSaveFlash 0.6s ease;
     }
+    .station-member--team-total .station-member__name {
+      font-size: 14px;
+      font-weight: 600;
+      color: rgba(255, 255, 255, 0.65);
+      letter-spacing: 0.04em;
+    }
     @keyframes stationSaveFlash {
       0% { box-shadow: 0 0 0 3px rgba(3, 255, 51, 0.55); }
       100% { box-shadow: 0 0 0 0 rgba(3, 255, 51, 0); }
@@ -2264,7 +2270,14 @@
       syncCard();
     }
 
-    /** 회차·팀의 종목별 4명 기록 합계 배열(6칸) 반환. 값 있는 종목만 합산, 없으면 "" */
+    /** REACTION INTELLIGENCE(3)만 팀원별 입력·합산, 나머지는 팀 기록 1개 */
+    const STATION_PER_MEMBER_EVENT_INDEX = 3;
+
+    function isStationTeamTotalEvent(eventIndex) {
+      return eventIndex !== STATION_PER_MEMBER_EVENT_INDEX;
+    }
+
+    /** 회차·팀의 종목별 팀 표시용 배열(6칸) */
     function computeTeamEventSums(session, team) {
       const members = rosterParticipants.filter(
         (p) => (p.session || 1) === session && String(p.team || "") === String(team || "")
@@ -2272,15 +2285,26 @@
       const out = ["", "", "", "", "", ""];
       if (members.length === 0) return out;
       for (let i = 0; i < 6; i++) {
-        let sum = 0;
-        let allEntered = true;
-        members.forEach((p) => {
-          const sec = parseNumber((p.metrics && p.metrics[i]) || "");
-          if (sec === null) allEntered = false;
-          else sum += sec;
-        });
-        // 팀원 전원이 입력한 종목만 합계 표시 (일부만 입력 시 부분합 미표시)
-        out[i] = allEntered ? formatSecondsToClock(sum) : "";
+        if (isStationTeamTotalEvent(i)) {
+          let sec = null;
+          for (const p of members) {
+            const s = parseNumber((p.metrics && p.metrics[i]) || "");
+            if (s !== null) {
+              sec = s;
+              break;
+            }
+          }
+          out[i] = sec !== null ? formatSecondsToClock(sec) : "";
+        } else {
+          let sum = 0;
+          let allEntered = true;
+          members.forEach((p) => {
+            const sec = parseNumber((p.metrics && p.metrics[i]) || "");
+            if (sec === null) allEntered = false;
+            else sum += sec;
+          });
+          out[i] = allEntered ? formatSecondsToClock(sum) : "";
+        }
       }
       return out;
     }
@@ -3064,6 +3088,13 @@
         (p) => (p.session || 1) === session && String(p.team || "") === String(team || "")
       );
       if (members.length === 0) return null;
+      if (isStationTeamTotalEvent(eventIndex)) {
+        for (const p of members) {
+          const sec = parseNumber((p.metrics && p.metrics[eventIndex]) || "");
+          if (sec !== null) return formatSecondsToClock(sec);
+        }
+        return null;
+      }
       let sum = 0;
       for (const p of members) {
         const sec = parseNumber((p.metrics && p.metrics[eventIndex]) || "");
@@ -3078,7 +3109,12 @@
       if (!host) return;
       // 입력 중(포커스된 기록칸이 있음)에는 재그리기 보류 — 타이핑 끊김 방지
       const active = document.activeElement;
-      if (active && active.classList && active.classList.contains("station-member__input")) {
+      if (
+        active &&
+        active.classList &&
+        (active.classList.contains("station-member__input") ||
+          active.classList.contains("station-team__input"))
+      ) {
         return;
       }
       document.getElementById("stationEventName").textContent =
@@ -3138,32 +3174,12 @@
         }
         card.appendChild(title);
 
-        g.members.forEach((p) => {
-          const row = document.createElement("div");
-          row.className = "station-member";
-
-          const name = document.createElement("div");
-          name.className = "station-member__name";
-          name.textContent = p.name || "(이름 없음)";
-
-          const gender = document.createElement("span");
-          gender.className =
-            "station-member__gender station-member__gender--" + (p.gender === "M" ? "m" : "f");
-          gender.textContent = p.gender === "M" ? "남" : "여";
-
-          const input = document.createElement("input");
-          input.type = "text";
-          input.className = "station-member__input";
-          input.inputMode = "decimal";
-          input.placeholder = "MM:SS.ss";
-          const cur = (p.metrics && p.metrics[stationEventIndex]) || "";
-          input.value = cur ? formatMetricDisplayValue(stationEventIndex, cur) : "";
-
+        const bindStationInput = (input, onCommit) => {
           const commit = () => {
             const secs = parseTimeInputToSeconds(input.value);
             const formatted = secs === null ? input.value.trim() : formatSecondsToClock(secs);
             if (formatted) input.value = formatted;
-            saveStationValue(p.id, formatted);
+            onCommit(formatted);
             input.classList.remove("is-saved");
             void input.offsetWidth;
             input.classList.add("is-saved");
@@ -3176,12 +3192,64 @@
             }
           });
           input.addEventListener("blur", commit);
+        };
 
-          row.appendChild(name);
-          row.appendChild(gender);
+        if (isStationTeamTotalEvent(stationEventIndex)) {
+          const row = document.createElement("div");
+          row.className = "station-member station-member--team-total";
+
+          const label = document.createElement("div");
+          label.className = "station-member__name";
+          label.textContent = "팀 기록";
+
+          const input = document.createElement("input");
+          input.type = "text";
+          input.className = "station-member__input station-team__input";
+          input.inputMode = "decimal";
+          input.placeholder = "MM:SS.ss";
+          input.setAttribute("aria-label", `${teamLabel} 팀 기록`);
+          const cur =
+            (g.members[0] && g.members[0].metrics && g.members[0].metrics[stationEventIndex]) ||
+            "";
+          input.value = cur ? formatMetricDisplayValue(stationEventIndex, cur) : "";
+          bindStationInput(input, (formatted) => {
+            saveStationTeamValue(stationSessionNum, g.team, formatted);
+          });
+
+          row.appendChild(label);
           row.appendChild(input);
           card.appendChild(row);
-        });
+        } else {
+          g.members.forEach((p) => {
+            const row = document.createElement("div");
+            row.className = "station-member";
+
+            const name = document.createElement("div");
+            name.className = "station-member__name";
+            name.textContent = p.name || "(이름 없음)";
+
+            const gender = document.createElement("span");
+            gender.className =
+              "station-member__gender station-member__gender--" + (p.gender === "M" ? "m" : "f");
+            gender.textContent = p.gender === "M" ? "남" : "여";
+
+            const input = document.createElement("input");
+            input.type = "text";
+            input.className = "station-member__input";
+            input.inputMode = "decimal";
+            input.placeholder = "MM:SS.ss";
+            const cur = (p.metrics && p.metrics[stationEventIndex]) || "";
+            input.value = cur ? formatMetricDisplayValue(stationEventIndex, cur) : "";
+            bindStationInput(input, (formatted) => {
+              saveStationValue(p.id, formatted);
+            });
+
+            row.appendChild(name);
+            row.appendChild(gender);
+            row.appendChild(input);
+            card.appendChild(row);
+          });
+        }
 
         host.appendChild(card);
       });
@@ -3203,6 +3271,37 @@
         localStorage.setItem(ROSTER_STORAGE_KEY, JSON.stringify(rosterParticipants));
       } catch (_) {}
       dbSetParticipant(updated);
+      setTimeout(() => renderStationView(), 0);
+    }
+
+    /** 팀 전체 기록 1개 종목 — 팀원 전원 metrics에 동일 값 저장 */
+    function saveStationTeamValue(session, team, value) {
+      const members = rosterParticipants.filter(
+        (p) => (p.session || 1) === session && String(p.team || "") === String(team || "")
+      );
+      if (members.length === 0) return;
+      const eventIndex = stationEventIndex;
+      members.forEach((p) => {
+        const i = rosterParticipants.findIndex((x) => x.id === p.id);
+        if (i < 0) return;
+        const metrics = Array.isArray(p.metrics) ? p.metrics.slice() : ["", "", "", "", "", ""];
+        while (metrics.length < 6) metrics.push("");
+        metrics[eventIndex] = value || "";
+        let summaryAvg = p.summaryAvg;
+        const total = computeTotalTimeFromMetrics(metrics);
+        if (total !== null) summaryAvg = formatSecondsToClock(total);
+        const updated = {
+          ...p,
+          metrics,
+          summaryAvg: summaryAvg || undefined,
+          updatedAt: Date.now(),
+        };
+        rosterParticipants[i] = updated;
+        dbSetParticipant(updated);
+      });
+      try {
+        localStorage.setItem(ROSTER_STORAGE_KEY, JSON.stringify(rosterParticipants));
+      } catch (_) {}
       setTimeout(() => renderStationView(), 0);
     }
 
