@@ -23,7 +23,6 @@
     }
 
     :root {
-      --card-bg-image: url("assets/card-bg.png");
       --cyan: #03ff33;
       --white: #f5f5f5;
       /* 미리보기 확대 배율 — 레이아웃은 .card-preview-frame 이 같은 배율로 공간 확보 */
@@ -683,21 +682,34 @@
       width: 54mm;
       height: 86mm;
       background-color: #000;
-      background-image: var(--card-bg-image);
-      background-size: 100% 100%;
-      background-position: center;
-      background-repeat: no-repeat;
       -webkit-print-color-adjust: exact;
       print-color-adjust: exact;
       transform-origin: top center;
       transform: scale(var(--card-preview-scale));
       box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+      overflow: hidden;
+    }
+
+    /* CSS background 대신 img — 인쇄·모바일에서 배경 누락 방지 */
+    .card-bg-img {
+      position: absolute;
+      inset: 0;
+      z-index: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: fill;
+      object-position: center;
+      pointer-events: none;
+      user-select: none;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
     }
 
     /* 배경 위에 입력 기록 표시 (위치는 템플릿에 맞게 조정) */
     .card-overlay {
       position: absolute;
       inset: 0;
+      z-index: 1;
       display: flex;
       flex-direction: column;
       padding: 19% 5.5% 20% 5.5%;
@@ -808,7 +820,7 @@
       stroke-width: 0.8;
     }
 
-    .overlay-spider polygon {
+    .overlay-spider .spider-data {
       fill: rgba(3, 255, 51, 0.3);
       stroke: #03ff33;
       stroke-width: 0.75;
@@ -924,7 +936,8 @@
     }
 
     @media print {
-      .no-print {
+      .no-print,
+      .sync-badge {
         display: none !important;
       }
 
@@ -954,6 +967,11 @@
       .card {
         transform: none;
         box-shadow: none;
+      }
+
+      .card-bg-img {
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
       }
 
       @page {
@@ -2003,6 +2021,16 @@
     <div class="preview-wrap">
       <div class="card-preview-frame">
         <div class="card" id="card">
+          <img
+            class="card-bg-img"
+            id="cardBgImg"
+            src="assets/card-bg.png"
+            width="637"
+            height="1016"
+            alt=""
+            decoding="sync"
+            fetchpriority="high"
+          />
           <div class="card-overlay">
             <div class="overlay-avg-hero" id="ovAvgHero" hidden>
               <div class="overlay-avg-hero__scale">
@@ -3520,11 +3548,13 @@
       const rings = ringRatios
         .map((r, idx) => {
           const cls = idx === ringRatios.length - 1 ? "spider-ring spider-ring--outer" : "spider-ring";
-          const points = Array.from({ length: 6 }, (_, axisIdx) => {
-            const p = getSpiderVertex(axisIdx, r);
-            return `${p.x.toFixed(2)},${p.y.toFixed(2)}`;
-          }).join(" ");
-          return `<polygon class="${cls}" points="${points}"></polygon>`;
+          const verts = Array.from({ length: 6 }, (_, axisIdx) => getSpiderVertex(axisIdx, r));
+          return verts
+            .map((p, vi) => {
+              const n = verts[(vi + 1) % 6];
+              return `<line class="${cls}" x1="${p.x.toFixed(2)}" y1="${p.y.toFixed(2)}" x2="${n.x.toFixed(2)}" y2="${n.y.toFixed(2)}"></line>`;
+            })
+            .join("");
         })
         .join("");
       const axes = Array.from({ length: 6 }, (_, axisIdx) => {
@@ -3545,7 +3575,7 @@
             `<g><circle class="spider-badge${p.grade === "S" ? " spider-badge--s" : ""}" cx="${p.badgeX.toFixed(2)}" cy="${p.badgeY.toFixed(2)}" r="2.55"></circle><text class="spider-grade${p.grade === "S" ? " spider-grade--s" : ""}${p.grade === "D" ? " spider-grade--d" : ""}" x="${p.badgeX.toFixed(2)}" y="${p.badgeY.toFixed(2)}">${p.grade}</text></g>`
         )
         .join("");
-      svg.innerHTML = `${rings}${axes}<polygon points="${polygonPoints}"></polygon>${badges}`;
+      svg.innerHTML = `${rings}${axes}<polygon class="spider-data" points="${polygonPoints}"></polygon>${badges}`;
     }
 
     /** 카드 중앙 평균: 6종목 모두 입력된 경우, 환산 점수들의 산술 평균 */
@@ -4993,13 +5023,12 @@
     window.addEventListener("beforeprint", () => {
       closeCsvExportModal();
       syncCard();
+      initCardBgImage();
     });
 
     function initCardBgImage() {
-      document.documentElement.style.setProperty(
-        "--card-bg-image",
-        `url("assets/card-bg.png?v=${Date.now()}")`
-      );
+      const img = document.getElementById("cardBgImg");
+      if (img) img.src = `assets/card-bg.png?v=${Date.now()}`;
     }
 
     /* ===== 실시간 동기화 & 스테이션/랭킹 모드 부트스트랩 ===== */
