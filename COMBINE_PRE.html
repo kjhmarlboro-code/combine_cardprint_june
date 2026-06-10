@@ -1459,142 +1459,6 @@
       outline: 2px solid #03ff33;
       outline-offset: 2px;
     }
-    .station-cognition-hint {
-      font-size: 12px;
-      color: #8a93a0;
-      padding: 2px 0 8px;
-    }
-    .station-cognition-modal {
-      position: fixed;
-      inset: 0;
-      z-index: 50;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 16px;
-    }
-    .station-cognition-modal[hidden] {
-      display: none;
-    }
-    .station-cognition-modal__backdrop {
-      position: absolute;
-      inset: 0;
-      background: rgba(0, 0, 0, 0.72);
-    }
-    .station-cognition-modal__panel {
-      position: relative;
-      width: min(440px, 100%);
-      max-height: min(90vh, 640px);
-      overflow-y: auto;
-      background: #1a2030;
-      border: 1px solid rgba(255, 255, 255, 0.12);
-      border-radius: 14px;
-      padding: 18px 16px 14px;
-      box-shadow: 0 16px 48px rgba(0, 0, 0, 0.45);
-    }
-    .station-cognition-modal__title {
-      margin: 0 0 4px;
-      font-size: 18px;
-      font-weight: 800;
-      color: #fff;
-    }
-    .station-cognition-modal__sub {
-      margin: 0 0 14px;
-      font-size: 12px;
-      color: #9aa3af;
-      line-height: 1.45;
-    }
-    .station-cognition-modal__row {
-      display: grid;
-      grid-template-columns: 1fr auto 88px;
-      gap: 8px;
-      align-items: center;
-      margin-bottom: 8px;
-    }
-    .station-cognition-modal__name {
-      font-size: 15px;
-      font-weight: 700;
-      color: #e8eaed;
-    }
-    .station-cognition-modal__gender {
-      font-size: 11px;
-      font-weight: 700;
-      padding: 3px 7px;
-      border-radius: 6px;
-    }
-    .station-cognition-modal__gender--m { background: #1c3a5e; color: #8ec5ff; }
-    .station-cognition-modal__gender--f { background: #5e1c3a; color: #ff9ec5; }
-    .station-cognition-modal__input {
-      width: 100%;
-      box-sizing: border-box;
-      border: 1px solid rgba(255, 255, 255, 0.22);
-      background: #0f131a;
-      color: #fff;
-      border-radius: 8px;
-      padding: 10px 8px;
-      font-size: 15px;
-      font-weight: 700;
-      text-align: center;
-    }
-    .station-cognition-modal__input:focus {
-      outline: none;
-      border-color: #03ff33;
-    }
-    .station-cognition-modal__sum {
-      margin: 12px 0 14px;
-      padding: 10px 12px;
-      border-radius: 8px;
-      background: rgba(3, 255, 51, 0.08);
-      border: 1px solid rgba(3, 255, 51, 0.22);
-      font-size: 14px;
-      font-weight: 700;
-      color: #03ff33;
-      text-align: center;
-    }
-    .station-cognition-modal__sum.is-incomplete {
-      color: #9aa3af;
-      background: rgba(255, 255, 255, 0.04);
-      border-color: rgba(255, 255, 255, 0.1);
-    }
-    .station-cognition-modal__actions {
-      display: flex;
-      gap: 8px;
-      justify-content: flex-end;
-      align-items: center;
-    }
-    .station-cognition-modal__btn--delete {
-      margin-right: auto;
-      background: rgba(255, 80, 80, 0.12);
-      color: #ff9e9e;
-      border: 1px solid rgba(255, 120, 120, 0.45);
-    }
-    .station-cognition-modal__btn--delete:hover:not(:disabled) {
-      background: rgba(255, 80, 80, 0.22);
-    }
-    .station-cognition-modal__btn--delete:disabled {
-      opacity: 0.35;
-      cursor: not-allowed;
-    }
-    .station-cognition-modal__btn {
-      border: none;
-      border-radius: 8px;
-      padding: 10px 16px;
-      font-size: 14px;
-      font-weight: 800;
-      cursor: pointer;
-    }
-    .station-cognition-modal__btn--ghost {
-      background: #2a3344;
-      color: #cfd4dc;
-    }
-    .station-cognition-modal__btn--save {
-      background: #03ff33;
-      color: #06210b;
-    }
-    .station-cognition-modal__btn--save:disabled {
-      opacity: 0.45;
-      cursor: not-allowed;
-    }
 
     /* ===== 랭킹 보드 (확장 디스플레이 1920×1080) ===== */
     body.ranking-mode {
@@ -2179,20 +2043,6 @@
       Supabase 설정이 비어 있어 이 기기 안에서만 저장됩니다. 다른 기기와 공유하려면 코드 상단 SUPABASE_CONFIG를 채우세요.
     </div>
     <div class="station-body" id="stationList"></div>
-    <div class="station-cognition-modal" id="stationCognitionModal" hidden>
-      <div class="station-cognition-modal__backdrop" id="stationCognitionModalBackdrop"></div>
-      <div class="station-cognition-modal__panel" role="dialog" aria-modal="true" aria-labelledby="stationCognitionModalTitle">
-        <h2 class="station-cognition-modal__title" id="stationCognitionModalTitle"></h2>
-        <p class="station-cognition-modal__sub">4명 기록을 모두 입력한 뒤 저장하면 팀 합계가 기록됩니다. 랭킹에는 팀 합계가 더 좋아질 때만 반영됩니다.</p>
-        <div id="stationCognitionModalRows"></div>
-        <div class="station-cognition-modal__sum is-incomplete" id="stationCognitionModalSum">4명 기록 입력 대기</div>
-        <div class="station-cognition-modal__actions">
-          <button type="button" class="station-cognition-modal__btn station-cognition-modal__btn--delete" id="stationCognitionModalDelete" disabled>마지막 시도 삭제</button>
-          <button type="button" class="station-cognition-modal__btn station-cognition-modal__btn--ghost" id="stationCognitionModalCancel">취소</button>
-          <button type="button" class="station-cognition-modal__btn station-cognition-modal__btn--save" id="stationCognitionModalSave" disabled>저장</button>
-        </div>
-      </div>
-    </div>
   </div>
 
   <div id="stationClearSessionModal" class="metric-modal" hidden aria-hidden="true">
@@ -2294,137 +2144,6 @@
       { label: "FARMER'S CARRY", unit: "MM:SS.ss" },
       { label: "ROWING", unit: "MM:SS.ss" },
     ];
-    /** REACTION INTELLIGENCE(3): 팀원 4명 합산 — 랭킹은 완료된 팀 합계 시도 중 최고만 반영 */
-    const STATION_PER_MEMBER_EVENT_INDEX = 3;
-
-    function isCognitionEventIndex(eventIndex) {
-      return eventIndex === STATION_PER_MEMBER_EVENT_INDEX;
-    }
-
-    function cognitionEntryMemberValues(entry) {
-      if (!entry) return {};
-      if (entry.memberValues && typeof entry.memberValues === "object") return entry.memberValues;
-      return {};
-    }
-
-    function getTeamCognitionAttempts(session, team) {
-      const anchor = getTeamAnchorMember(session, team);
-      if (!anchor) return [];
-      return metricsHistoryArr6(anchor.metricsHistory)[STATION_PER_MEMBER_EVENT_INDEX];
-    }
-
-    /** DB 로드 시 1회: 예전 개인 metrics → 팀 합계 시도로 이전 (표시할 때 자동 생성하지 않음) */
-    function migrateLegacyCognitionTeam(session, team) {
-      const anchor = getTeamAnchorMember(session, team);
-      if (!anchor) return false;
-      const attempts = getTeamCognitionAttempts(session, team);
-      if (attempts.length > 0) return false;
-
-      const members = getTeamMembers(session, team);
-      if (members.length === 0) return false;
-
-      const memberValues = {};
-      let sumSec = 0;
-      let count = 0;
-      members.forEach((m) => {
-        const v = metricsArr6(m.metrics)[STATION_PER_MEMBER_EVENT_INDEX];
-        const sec = parseNumber(v);
-        if (sec !== null) {
-          memberValues[m.id] = v;
-          sumSec += sec;
-          count++;
-        }
-      });
-      if (count === 0) return false;
-
-      const anchorIdx = rosterParticipants.findIndex((x) => x.id === anchor.id);
-      if (anchorIdx < 0) return false;
-      const history = metricsHistoryArr6(anchor.metricsHistory);
-
-      const rawValues = members.map((m) => metricsArr6(m.metrics)[STATION_PER_MEMBER_EVENT_INDEX]);
-      const allSame = rawValues.length > 0 && rawValues.every((v) => v === rawValues[0]);
-
-      if (allSame && count === members.length) {
-        history[STATION_PER_MEMBER_EVENT_INDEX].push({
-          value: rawValues[0],
-          memberValues: {},
-          at: Date.now(),
-        });
-      } else if (count === members.length) {
-        history[STATION_PER_MEMBER_EVENT_INDEX].push({
-          value: formatSecondsToClock(sumSec),
-          memberValues,
-          at: Date.now(),
-        });
-      } else {
-        return false;
-      }
-
-      const bestSum = pickBestMetricValue(
-        history[STATION_PER_MEMBER_EVENT_INDEX].map((a) => a.value)
-      );
-      rosterParticipants[anchorIdx] = syncParticipantMetricsFromHistory({
-        ...rosterParticipants[anchorIdx],
-        metricsHistory: history,
-      });
-      syncTeamCognitionMetricsToMembers(session, team, bestSum, Date.now());
-      dbSetParticipant(rosterParticipants[anchorIdx]);
-      return true;
-    }
-
-    let legacyCognitionMigrationRan = false;
-    function migrateLegacyCognitionTeams() {
-      if (legacyCognitionMigrationRan) return;
-      legacyCognitionMigrationRan = true;
-      const keys = new Set();
-      rosterParticipants.forEach((p) => {
-        if (p.team) keys.add(`${p.session || 1}\t${p.team}`);
-      });
-      keys.forEach((key) => {
-        const tab = key.indexOf("\t");
-        migrateLegacyCognitionTeam(Number(key.slice(0, tab)), key.slice(tab + 1));
-      });
-    }
-
-    function getTeamCognitionBestSum(session, team) {
-      const attempts = getTeamCognitionAttempts(session, team);
-      return pickBestMetricValue(attempts.map((a) => a.value));
-    }
-
-    function getTeamCognitionLastMemberValues(session, team) {
-      const attempts = getTeamCognitionAttempts(session, team);
-      const members = getTeamMembers(session, team);
-      const out = {};
-      if (attempts.length > 0) {
-        const last = attempts[attempts.length - 1];
-        Object.assign(out, cognitionEntryMemberValues(last));
-      }
-      members.forEach((m) => {
-        if (!out[m.id]) out[m.id] = "";
-      });
-      return out;
-    }
-
-    function syncTeamCognitionMetricsToMembers(session, team, bestSum, updatedAt) {
-      const members = getTeamMembers(session, team);
-      const ts = updatedAt != null ? updatedAt : Date.now();
-      members.forEach((p) => {
-        const i = rosterParticipants.findIndex((x) => x.id === p.id);
-        if (i < 0) return;
-        const metrics = metricsArr6(rosterParticipants[i].metrics);
-        metrics[STATION_PER_MEMBER_EVENT_INDEX] = bestSum || "";
-        const total = computeTotalTimeFromMetrics(metrics);
-        rosterParticipants[i] = {
-          ...rosterParticipants[i],
-          metrics,
-          summaryAvg: total !== null ? formatSecondsToClock(total) : rosterParticipants[i].summaryAvg,
-          updatedAt: ts,
-        };
-      });
-    }
-
-    const ROSTER_STORAGE_KEY = "combine_print_roster_v1";
-
     function escapeHtml(s) {
       const d = document.createElement("div");
       d.textContent = s;
@@ -2449,6 +2168,8 @@
     let editingMemberId = null;
     /** 팀원 추가 폼이 열린 그룹키(`회차-팀명`) */
     let addingTeamKey = null;
+
+    const ROSTER_STORAGE_KEY = "combine_print_roster_v1";
 
     /* ===== Supabase 동기화 레이어 ===== */
     let sbClient = null;
@@ -2497,8 +2218,9 @@
       return out;
     }
 
+    /** 스테이션 6종목 모두 팀 기록 1개 입력 */
     function isStationTeamTotalEvent(eventIndex) {
-      return eventIndex !== STATION_PER_MEMBER_EVENT_INDEX;
+      return eventIndex >= 0 && eventIndex < 6;
     }
 
     /** 시간 종목: 짧을수록 좋음 — 시도 목록에서 최고 기록 선택 */
@@ -2533,7 +2255,6 @@
       const history = metricsHistoryArr6(p.metricsHistory);
       let changed = false;
       for (let i = 0; i < 6; i++) {
-        if (isCognitionEventIndex(i)) continue;
         const best = history[i].length
           ? pickBestMetricValue(history[i].map((a) => a.value))
           : metrics[i] || "";
@@ -2541,14 +2262,6 @@
           metrics[i] = best;
           changed = true;
         }
-      }
-      const cogBest =
-        p.team && p.session
-          ? getTeamCognitionBestSum(p.session || 1, p.team)
-          : metrics[STATION_PER_MEMBER_EVENT_INDEX] || "";
-      if (cogBest !== metrics[STATION_PER_MEMBER_EVENT_INDEX]) {
-        metrics[STATION_PER_MEMBER_EVENT_INDEX] = cogBest;
-        changed = true;
       }
       let summaryAvg = p.summaryAvg;
       const total = computeTotalTimeFromMetrics(metrics);
@@ -2567,7 +2280,6 @@
       const h = metricsHistoryArr6(history);
       let changed = false;
       for (let i = 0; i < 6; i++) {
-        if (i === STATION_PER_MEMBER_EVENT_INDEX) continue;
         if (m[i] && h[i].length === 0) {
           h[i].push({ value: m[i], at: Date.now() });
           changed = true;
@@ -2690,7 +2402,6 @@
       const rows = data || [];
       const json = JSON.stringify(rows);
       rosterParticipants = rows.map(participantFromRow);
-      migrateLegacyCognitionTeams();
       rosterParticipants = rosterParticipants.map((p) => syncParticipantMetricsFromHistory(p));
       try {
         localStorage.setItem(ROSTER_STORAGE_KEY, JSON.stringify(rosterParticipants));
@@ -2908,14 +2619,10 @@
       const out = ["", "", "", "", "", ""];
       if (members.length === 0) return out;
       for (let i = 0; i < 6; i++) {
-        if (isStationTeamTotalEvent(i)) {
-          const best = pickBestMetricValue(
-            members.map((p) => getParticipantBestMetric(p, i)).filter(Boolean)
-          );
-          out[i] = best || "";
-        } else if (isCognitionEventIndex(i)) {
-          out[i] = getTeamCognitionBestSum(session, team) || "";
-        }
+        const best = pickBestMetricValue(
+          members.map((p) => getParticipantBestMetric(p, i)).filter(Boolean)
+        );
+        out[i] = best || "";
       }
       return out;
     }
@@ -3663,7 +3370,6 @@
       updateStationPills();
       populateStationTeamSelect();
       updateStationDocumentTitle();
-      initStationCognitionModal();
       initStationClearSessionModal();
       updateStationClearSessionButton();
     }
@@ -3706,17 +3412,10 @@
         (p) => (p.session || 1) === session && String(p.team || "") === String(team || "")
       );
       if (members.length === 0) return null;
-      if (isStationTeamTotalEvent(eventIndex)) {
-        const anchor = getTeamAnchorMember(session, team);
-        const best = anchor ? getParticipantBestMetric(anchor, eventIndex) : "";
-        const sec = parseNumber(best);
-        return sec !== null ? formatSecondsToClock(sec) : null;
-      }
-      if (isCognitionEventIndex(eventIndex)) {
-        const best = getTeamCognitionBestSum(session, team);
-        return best ? best : null;
-      }
-      return null;
+      const anchor = getTeamAnchorMember(session, team);
+      const best = anchor ? getParticipantBestMetric(anchor, eventIndex) : "";
+      const sec = parseNumber(best);
+      return sec !== null ? formatSecondsToClock(sec) : null;
     }
 
     function renderStationView() {
@@ -3728,13 +3427,10 @@
         active &&
         active.classList &&
         (active.classList.contains("station-member__input") ||
-          active.classList.contains("station-team__input") ||
-          active.classList.contains("station-cognition-modal__input"))
+          active.classList.contains("station-team__input"))
       ) {
         return;
       }
-      const cognitionModal = document.getElementById("stationCognitionModal");
-      if (cognitionModal && !cognitionModal.hidden) return;
       document.getElementById("stationEventName").textContent =
         DEFAULT_METRICS[stationEventIndex].label;
       populateStationTeamSelect();
@@ -3783,42 +3479,6 @@
         card.className = "station-team";
         const teamLabel = g.team ? g.team : "미지정 팀";
         const eventSum = computeStationEventTeamSum(stationSessionNum, g.team, stationEventIndex);
-
-        if (isCognitionEventIndex(stationEventIndex)) {
-          const titleBtn = document.createElement("button");
-          titleBtn.type = "button";
-          titleBtn.className = "station-team__title station-team__title--clickable";
-          if (eventSum) {
-            titleBtn.innerHTML = `<span>${escapeHtml(teamLabel)}</span><span class="station-team__total">${escapeHtml(eventSum)}</span>`;
-          } else {
-            titleBtn.textContent = teamLabel;
-          }
-          titleBtn.addEventListener("click", () => {
-            openStationCognitionModal(stationSessionNum, g.team);
-          });
-          card.appendChild(titleBtn);
-          const hint = document.createElement("div");
-          hint.className = "station-cognition-hint";
-          hint.textContent = "팀명을 눌러 4명 기록 입력";
-          card.appendChild(hint);
-
-          const cogDelBtn = document.createElement("button");
-          cogDelBtn.type = "button";
-          cogDelBtn.className = "station-delete-btn station-delete-btn--card";
-          cogDelBtn.textContent = "마지막 시도 삭제";
-          cogDelBtn.disabled =
-            getStationTeamAttemptCount(stationSessionNum, g.team, stationEventIndex) === 0;
-          cogDelBtn.addEventListener("click", () => {
-            if (!confirmStationDeleteAttempt()) return;
-            if (deleteTeamCognitionLastAttempt(stationSessionNum, g.team)) {
-              setTimeout(() => renderStationView(), 0);
-            }
-          });
-          card.appendChild(cogDelBtn);
-
-          host.appendChild(card);
-          return;
-        }
 
         const title = document.createElement("div");
         title.className = "station-team__title";
@@ -3899,219 +3559,6 @@
         }
 
         host.appendChild(card);
-      });
-    }
-
-    let cognitionModalSession = 1;
-    let cognitionModalTeam = "";
-    let stationCognitionModalReady = false;
-
-    function updateCognitionModalDeleteButton() {
-      const delBtn = document.getElementById("stationCognitionModalDelete");
-      if (!delBtn) return;
-      const count = getStationTeamAttemptCount(
-        cognitionModalSession,
-        cognitionModalTeam,
-        STATION_PER_MEMBER_EVENT_INDEX
-      );
-      delBtn.disabled = count === 0;
-    }
-
-    function updateCognitionModalSumPreview() {
-      const sumEl = document.getElementById("stationCognitionModalSum");
-      const saveBtn = document.getElementById("stationCognitionModalSave");
-      if (!sumEl || !saveBtn) return;
-      const members = getTeamMembers(cognitionModalSession, cognitionModalTeam);
-      let totalSec = 0;
-      let complete = members.length > 0;
-      members.forEach((p) => {
-        const input = document.querySelector(
-          `.station-cognition-modal__input[data-participant-id="${CSS.escape(p.id)}"]`
-        );
-        const sec = input ? parseTimeInputToSeconds(input.value) : null;
-        if (sec === null) complete = false;
-        else totalSec += sec;
-      });
-      if (complete) {
-        sumEl.classList.remove("is-incomplete");
-        sumEl.textContent = `팀 합계: ${formatSecondsToClock(totalSec)}`;
-        saveBtn.disabled = false;
-      } else {
-        sumEl.classList.add("is-incomplete");
-        sumEl.textContent = `${members.length}명 기록을 모두 입력하세요`;
-        saveBtn.disabled = true;
-      }
-    }
-
-    function closeStationCognitionModal() {
-      const modal = document.getElementById("stationCognitionModal");
-      if (modal) modal.hidden = true;
-      cognitionModalTeam = "";
-    }
-
-    function openStationCognitionModal(session, team) {
-      const modal = document.getElementById("stationCognitionModal");
-      const titleEl = document.getElementById("stationCognitionModalTitle");
-      const rowsHost = document.getElementById("stationCognitionModalRows");
-      if (!modal || !titleEl || !rowsHost) return;
-
-      cognitionModalSession = session;
-      cognitionModalTeam = team;
-      const members = getTeamMembers(session, team);
-      const lastValues = getTeamCognitionLastMemberValues(session, team);
-      const teamLabel = team || "미지정 팀";
-
-      titleEl.textContent = `${teamLabel} — COGNITION`;
-      rowsHost.innerHTML = "";
-
-      members.forEach((p) => {
-        const row = document.createElement("div");
-        row.className = "station-cognition-modal__row";
-
-        const name = document.createElement("div");
-        name.className = "station-cognition-modal__name";
-        name.textContent = p.name || "(이름 없음)";
-
-        const gender = document.createElement("span");
-        gender.className =
-          "station-cognition-modal__gender station-cognition-modal__gender--" +
-          (p.gender === "M" ? "m" : "f");
-        gender.textContent = p.gender === "M" ? "남" : "여";
-
-        const input = document.createElement("input");
-        input.type = "text";
-        input.className = "station-cognition-modal__input";
-        input.dataset.participantId = p.id;
-        input.inputMode = "decimal";
-        input.placeholder = "MM:SS.ss";
-        const cur = lastValues[p.id] || "";
-        input.value = cur ? formatMetricDisplayValue(STATION_PER_MEMBER_EVENT_INDEX, cur) : "";
-        input.addEventListener("input", updateCognitionModalSumPreview);
-        input.addEventListener("keydown", (e) => {
-          if (e.key === "Enter") {
-            e.preventDefault();
-            const secs = parseTimeInputToSeconds(input.value);
-            if (secs !== null) input.value = formatSecondsToClock(secs);
-            updateCognitionModalSumPreview();
-          }
-        });
-
-        row.appendChild(name);
-        row.appendChild(gender);
-        row.appendChild(input);
-        rowsHost.appendChild(row);
-      });
-
-      updateCognitionModalSumPreview();
-      updateCognitionModalDeleteButton();
-      modal.hidden = false;
-      const firstInput = rowsHost.querySelector(".station-cognition-modal__input");
-      if (firstInput) setTimeout(() => firstInput.focus(), 0);
-    }
-
-    function saveTeamCognitionAttempt(session, team, memberValuesById) {
-      const members = getTeamMembers(session, team);
-      if (members.length === 0) return false;
-      const anchor = getTeamAnchorMember(session, team);
-      if (!anchor) return false;
-
-      let sumSec = 0;
-      for (const m of members) {
-        const v = (memberValuesById[m.id] || "").trim();
-        const sec = parseNumber(v);
-        if (sec === null) return false;
-        sumSec += sec;
-      }
-
-      const sumFormatted = formatSecondsToClock(sumSec);
-      const prevBest = getTeamCognitionBestSum(session, team);
-      const anchorIdx = rosterParticipants.findIndex((x) => x.id === anchor.id);
-      if (anchorIdx < 0) return false;
-
-      const history = metricsHistoryArr6(anchor.metricsHistory);
-      history[STATION_PER_MEMBER_EVENT_INDEX].push({
-        value: sumFormatted,
-        memberValues: { ...memberValuesById },
-        at: Date.now(),
-      });
-      const newBest = pickBestMetricValue(
-        history[STATION_PER_MEMBER_EVENT_INDEX].map((a) => a.value)
-      );
-      const bestChanged = !metricSecondsEqual(prevBest, newBest);
-      const anchorUpdatedAt = bestChanged ? Date.now() : anchor.updatedAt || Date.now();
-
-      const anchorMetrics = metricsArr6(anchor.metrics);
-      anchorMetrics[STATION_PER_MEMBER_EVENT_INDEX] = newBest;
-      const anchorTotal = computeTotalTimeFromMetrics(anchorMetrics);
-      rosterParticipants[anchorIdx] = {
-        ...anchor,
-        metrics: anchorMetrics,
-        metricsHistory: history,
-        summaryAvg: anchorTotal !== null ? formatSecondsToClock(anchorTotal) : anchor.summaryAvg,
-        updatedAt: anchorUpdatedAt,
-      };
-
-      if (bestChanged) {
-        syncTeamCognitionMetricsToMembers(session, team, newBest, anchorUpdatedAt);
-      }
-
-      try {
-        localStorage.setItem(ROSTER_STORAGE_KEY, JSON.stringify(rosterParticipants));
-      } catch (_) {}
-
-      dbSetParticipant(rosterParticipants[anchorIdx]);
-      if (bestChanged) {
-        getTeamMembers(session, team).forEach((p) => {
-          if (p.id === anchor.id) return;
-          const i = rosterParticipants.findIndex((x) => x.id === p.id);
-          if (i >= 0) dbSetParticipant(rosterParticipants[i]);
-        });
-      }
-
-      return true;
-    }
-
-    function initStationCognitionModal() {
-      if (stationCognitionModalReady) return;
-      stationCognitionModalReady = true;
-
-      const modal = document.getElementById("stationCognitionModal");
-      const backdrop = document.getElementById("stationCognitionModalBackdrop");
-      const cancelBtn = document.getElementById("stationCognitionModalCancel");
-      const saveBtn = document.getElementById("stationCognitionModalSave");
-      const deleteBtn = document.getElementById("stationCognitionModalDelete");
-
-      backdrop?.addEventListener("click", closeStationCognitionModal);
-      cancelBtn?.addEventListener("click", closeStationCognitionModal);
-      deleteBtn?.addEventListener("click", () => {
-        if (!confirmStationDeleteAttempt()) return;
-        if (
-          deleteTeamCognitionLastAttempt(cognitionModalSession, cognitionModalTeam)
-        ) {
-          openStationCognitionModal(cognitionModalSession, cognitionModalTeam);
-          setTimeout(() => renderStationView(), 0);
-        }
-      });
-      saveBtn?.addEventListener("click", () => {
-        const members = getTeamMembers(cognitionModalSession, cognitionModalTeam);
-        const memberValues = {};
-        let ok = true;
-        members.forEach((p) => {
-          const input = document.querySelector(
-            `.station-cognition-modal__input[data-participant-id="${CSS.escape(p.id)}"]`
-          );
-          const secs = input ? parseTimeInputToSeconds(input.value) : null;
-          if (secs === null) ok = false;
-          else memberValues[p.id] = formatSecondsToClock(secs);
-        });
-        if (!ok) {
-          updateCognitionModalSumPreview();
-          return;
-        }
-        if (saveTeamCognitionAttempt(cognitionModalSession, cognitionModalTeam, memberValues)) {
-          closeStationCognitionModal();
-          setTimeout(() => renderStationView(), 0);
-        }
       });
     }
 
@@ -4238,7 +3685,6 @@
         }
         const count = clearSessionAllRecords(stationSessionNum);
         closeStationClearSessionModal();
-        closeStationCognitionModal();
         renderStationView();
         if (count === 0) {
           window.alert(`${stationSessionNum}회차에 비울 기록이 없습니다.`);
@@ -4247,9 +3693,6 @@
     }
 
     function getStationTeamAttemptCount(session, team, eventIndex) {
-      if (isCognitionEventIndex(eventIndex)) {
-        return getTeamCognitionAttempts(session, team).length;
-      }
       const anchor = getTeamAnchorMember(session, team);
       if (!anchor) return 0;
       return metricsHistoryArr6(anchor.metricsHistory)[eventIndex].length;
@@ -4259,17 +3702,11 @@
       const members = getTeamMembers(session, team);
       const anchor = getTeamAnchorMember(session, team);
       if (!anchor) return;
-      const newBest = isCognitionEventIndex(eventIndex)
-        ? getTeamCognitionBestSum(session, team)
-        : getParticipantBestMetric(
-            rosterParticipants.find((x) => x.id === anchor.id) || anchor,
-            eventIndex
-          );
+      const newBest = getParticipantBestMetric(
+        rosterParticipants.find((x) => x.id === anchor.id) || anchor,
+        eventIndex
+      );
       const ts = updatedAt != null ? updatedAt : Date.now();
-      if (isCognitionEventIndex(eventIndex)) {
-        syncTeamCognitionMetricsToMembers(session, team, newBest, ts);
-        return;
-      }
       members.forEach((p) => {
         const i = rosterParticipants.findIndex((x) => x.id === p.id);
         if (i < 0) return;
@@ -4288,29 +3725,6 @@
 
     /** 팀 종목: 마지막 시도 1건 삭제 → 남은 시도 중 최고 기록으로 복구 */
     function deleteStationTeamLastAttempt(session, team, eventIndex) {
-      const anchor = getTeamAnchorMember(session, team);
-      if (!anchor) return false;
-      const anchorIdx = rosterParticipants.findIndex((x) => x.id === anchor.id);
-      if (anchorIdx < 0) return false;
-      const history = metricsHistoryArr6(anchor.metricsHistory);
-      if (history[eventIndex].length === 0) return false;
-
-      history[eventIndex].pop();
-      const updated = syncParticipantMetricsFromHistory({
-        ...rosterParticipants[anchorIdx],
-        metricsHistory: history,
-        updatedAt: Date.now(),
-      });
-      rosterParticipants[anchorIdx] = updated;
-      dbSetParticipant(updated);
-      syncStationTeamMetricsAfterHistoryChange(session, team, eventIndex, Date.now());
-      persistRosterLocal();
-      return true;
-    }
-
-    /** COGNITION: 마지막 팀 합계 시도 1건 삭제 */
-    function deleteTeamCognitionLastAttempt(session, team) {
-      const eventIndex = STATION_PER_MEMBER_EVENT_INDEX;
       const anchor = getTeamAnchorMember(session, team);
       if (!anchor) return false;
       const anchorIdx = rosterParticipants.findIndex((x) => x.id === anchor.id);
@@ -4831,30 +4245,6 @@
                   ev + 1,
                   label,
                   "팀",
-                  "",
-                  "",
-                  idx + 1,
-                  att.value,
-                  formatCsvTimestamp(att.at),
-                  att.value === best ? "Y" : "",
-                ]
-                  .map(csvEscapeCell)
-                  .join(",")
-              );
-            });
-          } else if (isCognitionEventIndex(ev)) {
-            const anchor = getTeamAnchorMember(session, team);
-            if (!anchor || !participantInCsvScope(anchor, scopeParticipants)) continue;
-            const history = metricsHistoryArr6(anchor.metricsHistory)[ev];
-            const best = getTeamCognitionBestSum(session, team);
-            history.forEach((att, idx) => {
-              rows.push(
-                [
-                  session,
-                  team,
-                  ev + 1,
-                  label,
-                  "팀합",
                   "",
                   "",
                   idx + 1,
