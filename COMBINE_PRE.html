@@ -1938,7 +1938,7 @@
         <div id="metricRows"></div>
       </div>
       <div class="field">
-        <label for="avgManual">총 시간 (6종목 기록 합산, 자동 계산). 6종목이 모두 입력되면 MM:SS.ss 로 표시됩니다.</label>
+        <label for="avgManual">총 시간 (SLED PUSH 제외 5종목 합산, 자동 계산). 해당 5종목이 모두 입력되면 MM:SS.ss 로 표시됩니다.</label>
         <input type="text" id="avgManual" placeholder="00:00.00" inputmode="decimal" readonly />
       </div>
       <div class="actions">
@@ -2155,6 +2155,15 @@
       { label: "FARMER'S CARRY", unit: "MM:SS.ss" },
       { label: "ROWING", unit: "MM:SS.ss" },
     ];
+    /** SLED PUSH(index 1) 미실시 — 랭킹·카드 총점 제외, 레이더 POWER 축은 S 고정 */
+    const SLED_PUSH_EVENT_INDEX = 1;
+    const EVENTS_EXCLUDED_FROM_TOTAL = [SLED_PUSH_EVENT_INDEX];
+    const SPIDER_FORCE_S_GRADE_INDICES = [SLED_PUSH_EVENT_INDEX];
+
+    function isEventExcludedFromTotal(eventIndex) {
+      return EVENTS_EXCLUDED_FROM_TOTAL.includes(eventIndex);
+    }
+
     function escapeHtml(s) {
       const d = document.createElement("div");
       d.textContent = s;
@@ -3241,11 +3250,18 @@
       };
       SPIDER_AXIS_METRIC_INDEX.forEach((metricIdx, axisIdx) => {
         const sumText = teamSums ? teamSums[metricIdx] : values[metricIdx] || "";
-        const raw = parseNumber(sumText);
-        const score = raw === null ? 0 : metricRawToScore(raw, metricIdx);
-        const safeScore = Number.isFinite(score) ? Math.max(0, Math.min(100, score)) : 0;
-        const grade = raw === null ? "D" : metricGrade(raw, metricIdx, safeScore);
-        const ratio = gradeToRatio[grade] || 0.2;
+        let grade;
+        let ratio;
+        if (SPIDER_FORCE_S_GRADE_INDICES.includes(metricIdx)) {
+          grade = "S";
+          ratio = gradeToRatio.S;
+        } else {
+          const raw = parseNumber(sumText);
+          const score = raw === null ? 0 : metricRawToScore(raw, metricIdx);
+          const safeScore = Number.isFinite(score) ? Math.max(0, Math.min(100, score)) : 0;
+          grade = raw === null ? "D" : metricGrade(raw, metricIdx, safeScore);
+          ratio = gradeToRatio[grade] || 0.2;
+        }
         const point = getSpiderVertex(axisIdx, ratio);
         const badgePoint = getSpiderVertex(axisIdx, Math.min(1.08, ratio + 0.12));
         pts.push({
@@ -3296,13 +3312,13 @@
       svg.innerHTML = `${rings}${axes}<polygon class="spider-data" points="${polygonPoints}"></polygon>${badges}`;
     }
 
-    /** 카드 중앙 평균: 6종목 모두 입력된 경우, 환산 점수들의 산술 평균 */
-    /** 카드 중앙 총점: 6종목 기록 시간(초)의 합산. 6개 모두 입력된 경우에만 값 반환. */
+    /** 카드 중앙 총점: SLED PUSH 제외 5종목 합산. 해당 5종목 모두 입력 시에만 값 반환. */
     function computeTotalTimeFromValues() {
       const inputs = Array.from(document.querySelectorAll("#metricRows .m-value"));
       if (inputs.length !== 6) return null;
       let sum = 0;
       for (let i = 0; i < 6; i++) {
+        if (isEventExcludedFromTotal(i)) continue;
         const sec = parseNumber(inputs[i].value);
         if (sec === null) return null;
         sum += sec;
@@ -3310,16 +3326,25 @@
       return sum;
     }
 
-    /** 6종목 값 배열 → 총 초 (모두 입력됐을 때만). 스테이션·동기화에서 사용 */
+    /** 6종목 값 배열 → 총 초 (SLED PUSH 제외, 나머지 5종목 모두 입력 시). */
     function computeTotalTimeFromMetrics(arr) {
       if (!Array.isArray(arr) || arr.length < 6) return null;
       let sum = 0;
       for (let i = 0; i < 6; i++) {
+        if (isEventExcludedFromTotal(i)) continue;
         const sec = parseNumber(arr[i]);
         if (sec === null) return null;
         sum += sec;
       }
       return sum;
+    }
+
+    function isTeamRankingComplete(eventSums) {
+      for (let i = 0; i < 6; i++) {
+        if (isEventExcludedFromTotal(i)) continue;
+        if (!eventSums[i]) return false;
+      }
+      return true;
     }
 
     /* ===== 스테이션(포스트) 입력 모드 ===== */
@@ -3830,15 +3855,18 @@
     }
     let rankingSessionNum = 1;
 
-    /** 회차·팀 1팀의 랭킹용 데이터 (6종목 전원 입력 시에만 complete) */
+    /** 회차·팀 1팀의 랭킹용 데이터 (SLED PUSH 제외 5종목 입력 시 complete) */
     function computeTeamRankingEntry(session, team) {
       const eventSums = computeTeamEventSums(session, team);
-      const complete = eventSums.every((v) => v !== "");
+      const complete = isTeamRankingComplete(eventSums);
       if (!complete) {
         return { team, complete: false, eventSums, totalSec: null, totalDisplay: "" };
       }
       let totalSec = 0;
-      for (let i = 0; i < 6; i++) totalSec += parseNumber(eventSums[i]);
+      for (let i = 0; i < 6; i++) {
+        if (isEventExcludedFromTotal(i)) continue;
+        totalSec += parseNumber(eventSums[i]);
+      }
       return {
         team,
         complete: true,
