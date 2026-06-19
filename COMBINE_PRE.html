@@ -1726,7 +1726,19 @@
       max-width: 100%;
     }
     .ranking-row--pending .ranking-team-label {
-      opacity: 0.55;
+      background: transparent;
+      border: 2px solid var(--ranking-rank-sub-muted-color);
+    }
+    .ranking-row--pending .ranking-team-label__text {
+      color: var(--ranking-rank-sub-muted-color);
+      text-shadow: none;
+    }
+    .ranking-row--pending .ranking-event-value {
+      color: var(--ranking-rank-sub-muted-color);
+      text-shadow: none;
+    }
+    .ranking-row--pending .ranking-row__event.is-empty .ranking-event-value {
+      opacity: 0.72;
     }
     /* 3~6위: 순위·팀명·테두리·종목·TOTAL 동일 흐릿한 회색 */
     .ranking-row--rank-sub .ranking-row__team {
@@ -1852,16 +1864,15 @@
     }
     .ranking-row--pending td {
       background: rgba(255, 255, 255, 0.02);
-      opacity: 0.55;
     }
     .ranking-row--pending .ranking-row__rank {
       font-size: 18px;
-      color: #000;
+      color: var(--ranking-rank-sub-muted-color);
+      text-shadow: none;
     }
     .ranking-row--pending .ranking-total-value {
       font-size: 38px;
-      color: #000;
-      opacity: 0.45;
+      color: var(--ranking-rank-sub-muted-color);
     }
     .ranking-row.ranking-row--rank-sub td.ranking-row__rank,
     .ranking-row.ranking-row--rank-sub .ranking-row__rank-num {
