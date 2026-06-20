@@ -2343,9 +2343,23 @@
         .sort((a, b) => String(a.id).localeCompare(String(b.id)));
     }
 
+    function getTeamMembersInList(list, session, team) {
+      return list
+        .filter(
+          (p) => (p.session || 1) === session && String(p.team || "") === String(team || "")
+        )
+        .sort((a, b) => String(a.id).localeCompare(String(b.id)));
+    }
+
     function getTeamAnchorMember(session, team) {
       const members = getTeamMembers(session, team);
       return members.length ? members[0] : null;
+    }
+
+    function isTeamAnchorParticipant(p, list) {
+      if (!p || !p.team) return true;
+      const members = getTeamMembersInList(list || rosterParticipants, p.session || 1, p.team);
+      return members.length > 0 && members[0].id === p.id;
     }
 
     /** 앱 참가자 객체 → Supabase row (snake_case 컬럼) */
@@ -2364,10 +2378,12 @@
       };
     }
     /** Supabase row → 앱 참가자 객체 */
-    function participantFromRow(d) {
+    function participantFromRow(d, opts) {
       const metrics = metricsArr6(d.metrics);
       let metricsHistory = metricsHistoryArr6(d.metrics_history);
-      metricsHistory = seedMetricsHistoryFromMetrics(metrics, metricsHistory);
+      if (!opts?.skipSeed) {
+        metricsHistory = seedMetricsHistoryFromMetrics(metrics, metricsHistory);
+      }
       return syncParticipantMetricsFromHistory({
         id: d.id,
         name: d.name || "",
@@ -2429,7 +2445,14 @@
       }
       const rows = data || [];
       const json = JSON.stringify(rows);
-      rosterParticipants = rows.map(participantFromRow);
+      rosterParticipants = rows.map((d) => participantFromRow(d, { skipSeed: true }));
+      rosterParticipants = rosterParticipants.map((p) => {
+        if (!p.team || !isTeamAnchorParticipant(p, rosterParticipants)) return p;
+        return {
+          ...p,
+          metricsHistory: seedMetricsHistoryFromMetrics(p.metrics, p.metricsHistory),
+        };
+      });
       rosterParticipants = rosterParticipants.map((p) => syncParticipantMetricsFromHistory(p));
       try {
         localStorage.setItem(ROSTER_STORAGE_KEY, JSON.stringify(rosterParticipants));
@@ -2518,15 +2541,20 @@
         if (raw) {
           const data = JSON.parse(raw);
           if (Array.isArray(data)) {
-            rosterParticipants = data.map((p) =>
-              syncParticipantMetricsFromHistory({
+            rosterParticipants = data.map((p) => ({
+              ...p,
+              metrics: metricsArr6(p.metrics),
+              metricsHistory: metricsHistoryArr6(p.metricsHistory),
+            }));
+            rosterParticipants = rosterParticipants.map((p) => {
+              if (!p.team || !isTeamAnchorParticipant(p, rosterParticipants)) return p;
+              return {
                 ...p,
-                metrics: metricsArr6(p.metrics),
-                metricsHistory: seedMetricsHistoryFromMetrics(
-                  p.metrics,
-                  metricsHistoryArr6(p.metricsHistory)
-                ),
-              })
+                metricsHistory: seedMetricsHistoryFromMetrics(p.metrics, p.metricsHistory),
+              };
+            });
+            rosterParticipants = rosterParticipants.map((p) =>
+              syncParticipantMetricsFromHistory(p)
             );
           }
         }
@@ -2639,18 +2667,13 @@
       syncCard();
     }
 
-    /** 회차·팀의 종목별 팀 표시용 배열(6칸) */
+    /** 회차·팀의 종목별 팀 기록(6칸) — 시도 이력은 팀 대표(anchor) 기준 */
     function computeTeamEventSums(session, team) {
-      const members = rosterParticipants.filter(
-        (p) => (p.session || 1) === session && String(p.team || "") === String(team || "")
-      );
       const out = ["", "", "", "", "", ""];
-      if (members.length === 0) return out;
+      const anchor = getTeamAnchorMember(session, team);
+      if (!anchor) return out;
       for (let i = 0; i < 6; i++) {
-        const best = pickBestMetricValue(
-          members.map((p) => getParticipantBestMetric(p, i)).filter(Boolean)
-        );
-        out[i] = best || "";
+        out[i] = getParticipantBestMetric(anchor, i) || "";
       }
       return out;
     }
@@ -3781,6 +3804,8 @@
       members.forEach((p) => {
         const i = rosterParticipants.findIndex((x) => x.id === p.id);
         if (i < 0) return;
+        const history = metricsHistoryArr6(rosterParticipants[i].metricsHistory);
+        if (p.id !== anchor.id) history[eventIndex] = [];
         const synced = syncParticipantMetricsFromHistory({
           ...rosterParticipants[i],
           metrics: (() => {
@@ -3788,6 +3813,7 @@
             m[eventIndex] = newBest;
             return m;
           })(),
+          metricsHistory: history,
         });
         rosterParticipants[i] = { ...synced, updatedAt: ts };
         dbSetParticipant(rosterParticipants[i]);
