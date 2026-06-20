@@ -1419,6 +1419,14 @@
       opacity: 0.35;
       cursor: not-allowed;
     }
+    .station-delete-btn--all {
+      border-color: rgba(255, 160, 80, 0.5);
+      background: rgba(255, 120, 40, 0.14);
+      color: #ffc299;
+    }
+    .station-delete-btn--all:hover:not(:disabled) {
+      background: rgba(255, 120, 40, 0.24);
+    }
     .station-delete-btn--card {
       display: block;
       width: calc(100% - 20px);
@@ -3587,8 +3595,29 @@
             }
           });
 
+          const clearAllBtn = document.createElement("button");
+          clearAllBtn.type = "button";
+          clearAllBtn.className = "station-delete-btn station-delete-btn--all";
+          clearAllBtn.textContent = "전체 삭제";
+          clearAllBtn.disabled = attemptCount === 0;
+          clearAllBtn.setAttribute("aria-label", `${teamLabel} ${DEFAULT_METRICS[stationEventIndex].label} 기록 전체 삭제`);
+          clearAllBtn.addEventListener("click", () => {
+            if (
+              !confirmStationDeleteAllAttempts(
+                teamLabel,
+                DEFAULT_METRICS[stationEventIndex].label
+              )
+            ) {
+              return;
+            }
+            if (deleteStationTeamAllAttempts(stationSessionNum, g.team, stationEventIndex)) {
+              setTimeout(() => renderStationView(), 0);
+            }
+          });
+
           field.appendChild(input);
           field.appendChild(delBtn);
+          field.appendChild(clearAllBtn);
           row.appendChild(label);
           row.appendChild(field);
           card.appendChild(row);
@@ -3629,6 +3658,12 @@
     function confirmStationDeleteAttempt() {
       return window.confirm(
         "마지막 시도를 삭제할까요?\n삭제 후에는 남은 시도 중 최고 기록이 랭킹에 반영됩니다."
+      );
+    }
+
+    function confirmStationDeleteAllAttempts(teamLabel, eventLabel) {
+      return window.confirm(
+        `${teamLabel} 팀의 ${eventLabel} 기록을 모두 삭제할까요?\n최고 기록을 포함한 시도 이력 전체가 지워지며 랭킹·카드에서도 제외됩니다.`
       );
     }
 
@@ -3769,8 +3804,36 @@
       if (history[eventIndex].length === 0) return false;
 
       history[eventIndex].pop();
+      const anchorMetrics = metricsArr6(rosterParticipants[anchorIdx].metrics);
+      if (history[eventIndex].length === 0) anchorMetrics[eventIndex] = "";
       const updated = syncParticipantMetricsFromHistory({
         ...rosterParticipants[anchorIdx],
+        metrics: anchorMetrics,
+        metricsHistory: history,
+        updatedAt: Date.now(),
+      });
+      rosterParticipants[anchorIdx] = updated;
+      dbSetParticipant(updated);
+      syncStationTeamMetricsAfterHistoryChange(session, team, eventIndex, Date.now());
+      persistRosterLocal();
+      return true;
+    }
+
+    /** 팀 종목: 해당 종목 시도 이력 전체 삭제 (최고 기록 포함) */
+    function deleteStationTeamAllAttempts(session, team, eventIndex) {
+      const anchor = getTeamAnchorMember(session, team);
+      if (!anchor) return false;
+      const anchorIdx = rosterParticipants.findIndex((x) => x.id === anchor.id);
+      if (anchorIdx < 0) return false;
+      const history = metricsHistoryArr6(anchor.metricsHistory);
+      const anchorMetrics = metricsArr6(rosterParticipants[anchorIdx].metrics);
+      if (history[eventIndex].length === 0 && !anchorMetrics[eventIndex]) return false;
+
+      history[eventIndex] = [];
+      anchorMetrics[eventIndex] = "";
+      const updated = syncParticipantMetricsFromHistory({
+        ...rosterParticipants[anchorIdx],
+        metrics: anchorMetrics,
         metricsHistory: history,
         updatedAt: Date.now(),
       });
