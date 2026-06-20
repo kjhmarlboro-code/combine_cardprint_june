@@ -1946,7 +1946,7 @@
         <div id="metricRows"></div>
       </div>
       <div class="field">
-        <label for="avgManual">총 시간 (SLED PUSH 제외 5종목 합산, 자동 계산). 해당 5종목이 모두 입력되면 MM:SS.ss 로 표시됩니다.</label>
+        <label for="avgManual">총 시간 (자동 합산). 회차에 따라 5종목 또는 6종목 기준이 적용됩니다.</label>
         <input type="text" id="avgManual" placeholder="00:00.00" inputmode="decimal" readonly />
       </div>
       <div class="actions">
@@ -2163,13 +2163,43 @@
       { label: "FARMER'S CARRY", unit: "MM:SS.ss" },
       { label: "ROWING", unit: "MM:SS.ss" },
     ];
-    /** SLED PUSH(index 1) 미실시 — 랭킹·카드 총점 제외, 레이더 POWER 축은 S 고정 */
+    /** SLED PUSH(index 1): 1~3회차 미실시(총점·랭킹 제외, 레이더 S 고정), 4~6회차는 정상 포함 */
     const SLED_PUSH_EVENT_INDEX = 1;
-    const EVENTS_EXCLUDED_FROM_TOTAL = [SLED_PUSH_EVENT_INDEX];
-    const SPIDER_FORCE_S_GRADE_INDICES = [SLED_PUSH_EVENT_INDEX];
+    const SLED_PUSH_SKIPPED_SESSIONS = new Set([1, 2, 3]);
 
-    function isEventExcludedFromTotal(eventIndex) {
-      return EVENTS_EXCLUDED_FROM_TOTAL.includes(eventIndex);
+    function isSledPushSkippedForSession(session) {
+      return SLED_PUSH_SKIPPED_SESSIONS.has(Number(session) || 1);
+    }
+
+    function isEventExcludedFromTotal(eventIndex, session) {
+      return eventIndex === SLED_PUSH_EVENT_INDEX && isSledPushSkippedForSession(session);
+    }
+
+    function isSpiderForceSGrade(metricIndex, session) {
+      return metricIndex === SLED_PUSH_EVENT_INDEX && isSledPushSkippedForSession(session);
+    }
+
+    /** 카드·총점 계산에 쓸 현재 회차 */
+    function getCardContextSession() {
+      if (currentCardSession != null) return currentCardSession;
+      if (activeRosterId) {
+        const p = rosterParticipants.find((x) => x.id === activeRosterId);
+        if (p) return p.session || 1;
+      }
+      return rosterRegSession || 1;
+    }
+
+    function updateAvgManualLabel() {
+      const label = document.querySelector('label[for="avgManual"]');
+      if (!label) return;
+      const session = getCardContextSession();
+      if (isSledPushSkippedForSession(session)) {
+        label.textContent =
+          "총 시간 (SLED PUSH 제외 5종목 합산, 자동 계산). 해당 5종목이 모두 입력되면 MM:SS.ss 로 표시됩니다.";
+      } else {
+        label.textContent =
+          "총 시간 (6종목 합산, 자동 계산). 6종목이 모두 입력되면 MM:SS.ss 로 표시됩니다.";
+      }
     }
 
     function escapeHtml(s) {
@@ -2292,7 +2322,7 @@
         }
       }
       let summaryAvg = p.summaryAvg;
-      const total = computeTotalTimeFromMetrics(metrics);
+      const total = computeTotalTimeFromMetrics(metrics, p.session);
       if (total !== null) summaryAvg = formatSecondsToClock(total);
       if (!changed && summaryAvg === p.summaryAvg) return p;
       return {
@@ -2324,7 +2354,7 @@
       history[eventIndex].push({ value, at: Date.now() });
       metrics[eventIndex] = pickBestMetricValue(history[eventIndex].map((a) => a.value));
       let summaryAvg = p.summaryAvg;
-      const total = computeTotalTimeFromMetrics(metrics);
+      const total = computeTotalTimeFromMetrics(metrics, p.session);
       if (total !== null) summaryAvg = formatSecondsToClock(total);
       return {
         ...p,
@@ -3272,6 +3302,7 @@
     function buildSpiderPoints(values) {
       const pts = [];
       const teamSums = getTeamSumValuesForSpider();
+      const spiderSession = getCardContextSession();
       const gradeToRatio = {
         D: 0.2,
         C: 0.4,
@@ -3283,7 +3314,7 @@
         const sumText = teamSums ? teamSums[metricIdx] : values[metricIdx] || "";
         let grade;
         let ratio;
-        if (SPIDER_FORCE_S_GRADE_INDICES.includes(metricIdx)) {
+        if (isSpiderForceSGrade(metricIdx, spiderSession)) {
           grade = "S";
           ratio = gradeToRatio.S;
         } else {
@@ -3343,13 +3374,14 @@
       svg.innerHTML = `${rings}${axes}<polygon class="spider-data" points="${polygonPoints}"></polygon>${badges}`;
     }
 
-    /** 카드 중앙 총점: SLED PUSH 제외 5종목 합산. 해당 5종목 모두 입력 시에만 값 반환. */
+    /** 카드 중앙 총점 — 1~3회차 SLED PUSH 제외, 4~6회차 6종목 합산 */
     function computeTotalTimeFromValues() {
       const inputs = Array.from(document.querySelectorAll("#metricRows .m-value"));
       if (inputs.length !== 6) return null;
+      const session = getCardContextSession();
       let sum = 0;
       for (let i = 0; i < 6; i++) {
-        if (isEventExcludedFromTotal(i)) continue;
+        if (isEventExcludedFromTotal(i, session)) continue;
         const sec = parseNumber(inputs[i].value);
         if (sec === null) return null;
         sum += sec;
@@ -3357,12 +3389,13 @@
       return sum;
     }
 
-    /** 6종목 값 배열 → 총 초 (SLED PUSH 제외, 나머지 5종목 모두 입력 시). */
-    function computeTotalTimeFromMetrics(arr) {
+    /** 6종목 값 배열 → 총 초 (회차별 SLED PUSH 포함 여부 반영) */
+    function computeTotalTimeFromMetrics(arr, session) {
       if (!Array.isArray(arr) || arr.length < 6) return null;
+      const ses = session != null ? session : getCardContextSession();
       let sum = 0;
       for (let i = 0; i < 6; i++) {
-        if (isEventExcludedFromTotal(i)) continue;
+        if (isEventExcludedFromTotal(i, ses)) continue;
         const sec = parseNumber(arr[i]);
         if (sec === null) return null;
         sum += sec;
@@ -3370,9 +3403,9 @@
       return sum;
     }
 
-    function isTeamRankingComplete(eventSums) {
+    function isTeamRankingComplete(eventSums, session) {
       for (let i = 0; i < 6; i++) {
-        if (isEventExcludedFromTotal(i)) continue;
+        if (isEventExcludedFromTotal(i, session)) continue;
         if (!eventSums[i]) return false;
       }
       return true;
@@ -3944,16 +3977,16 @@
     }
     let rankingSessionNum = 1;
 
-    /** 회차·팀 1팀의 랭킹용 데이터 (SLED PUSH 제외 5종목 입력 시 complete) */
+    /** 회차·팀 1팀의 랭킹용 데이터 (1~3회차 SLED PUSH 제외, 4~6회차 6종목) */
     function computeTeamRankingEntry(session, team) {
       const eventSums = computeTeamEventSums(session, team);
-      const complete = isTeamRankingComplete(eventSums);
+      const complete = isTeamRankingComplete(eventSums, session);
       if (!complete) {
         return { team, complete: false, eventSums, totalSec: null, totalDisplay: "" };
       }
       let totalSec = 0;
       for (let i = 0; i < 6; i++) {
-        if (isEventExcludedFromTotal(i)) continue;
+        if (isEventExcludedFromTotal(i, session)) continue;
         totalSec += parseNumber(eventSums[i]);
       }
       return {
@@ -4143,6 +4176,7 @@
     function syncCard() {
       const name = document.getElementById("participantName").value.trim();
       document.getElementById("ovName").textContent = currentCardTeam || "\u00a0";
+      updateAvgManualLabel();
 
       const totalTime = computeTotalTimeFromValues();
       const hero = document.getElementById("ovAvgHero");
