@@ -2199,6 +2199,33 @@
       { en: "STRENGTH", ko: "파머스 캐리" },
       { en: "ENDURANCE", ko: "스키에르그" },
     ];
+    /**
+     * STAGE 1 종목별 팀 합산(4명) 등급표 — 스파이더 그래프 기준 (초, 짧을수록 좋음).
+     * STAGE 2도 전용 표 제공 전까지 이 표를 축(SPEED~ENDURANCE)에 맞춰 우선 적용.
+     */
+    const STAGE1_TEAM_GRADE_THRESHOLDS = {
+      // SHUTTLE RUN — S≤1:58, A≤2:05, B≤2:16, C≤2:27
+      0: { S: 118, A: 125, B: 136, C: 147 },
+      // SLED PUSH(POWER) — S≤0:45, A≤0:50, B≤0:55, C≤1:00
+      1: { S: 45, A: 50, B: 55, C: 60 },
+      // BOX JUMP OVER(VERTICAL) — S≤2:25, A≤2:33, B≤2:45, C≤2:55
+      2: { S: 145, A: 153, B: 165, C: 175 },
+      // REACTION INTELLIGENCE — S≤1:30, A≤1:35, B≤1:40, C≤1:45
+      3: { S: 90, A: 95, B: 100, C: 105 },
+      // FARMER'S CARRY — S≤2:34, A≤2:40, B≤2:51, C≤3:02
+      4: { S: 154, A: 160, B: 171, C: 182 },
+      // ROWING(ENDURANCE) — S≤3:18, A≤3:25, B≤3:35, C≤3:45
+      5: { S: 198, A: 205, B: 215, C: 225 },
+    };
+    /** STAGE 2 metricIndex → STAGE 1 등급표 index (임시) */
+    const STAGE2_SPIDER_GRADE_THRESHOLD_BY_METRIC = {
+      0: 0, // SHUTTLE RUN
+      1: 1, // SLED PULL ← SLED PUSH(POWER)
+      2: 2, // BURPEE BOX JUMP OVER ← BOX JUMP OVER(VERTICAL)
+      3: 3, // REACTION INTELLIGENCE
+      4: 4, // FARMER'S CARRY
+      5: 5, // SKIERG ← ROWING(ENDURANCE)
+    };
     const STAGE_CONFIGS = {
       1: {
         metrics: STAGE1_METRICS,
@@ -2211,6 +2238,7 @@
         panelTitle: "측정값 입력",
         rankingBg: "assets/ranking-bg.png",
         rankingAdvanceBadge: "NEXT ROUND",
+        spiderGradeThresholdByMetric: null,
       },
       2: {
         metrics: STAGE2_METRICS,
@@ -2223,6 +2251,7 @@
         panelTitle: "STAGE 2 — 측정값 입력",
         rankingBg: "assets/ranking-bg-stage2.png",
         rankingAdvanceBadge: "FINALIST",
+        spiderGradeThresholdByMetric: STAGE2_SPIDER_GRADE_THRESHOLD_BY_METRIC,
       },
     };
     const STAGE_CFG = STAGE_CONFIGS[APP_STAGE] || STAGE_CONFIGS[1];
@@ -3319,31 +3348,21 @@
       return "M";
     }
 
-    /**
-     * 종목별 팀 합산(4명) 등급 구간 — 시간(초). 짧을수록 좋음.
-     * metricIndex: 0~5 = DEFAULT_METRICS 순서.
-     * 각 값 = 해당 등급 상한(이 초 이하면 해당 등급). C 초과 = D.
-     * 예: { S: 120, A: 140, B: 160, C: 180 }
-     */
-    const TEAM_GRADE_THRESHOLDS = {
-      // SHUTTLE RUN — 팀 기록(초). S≤1:58.00, A≤2:05.00, B≤2:16.00, C≤2:27.00
-      0: { S: 118, A: 125, B: 136, C: 147 },
-      // SLED PUSH(POWER) — 팀 기록(초). S≤0:45.00, A≤0:50.00, B≤0:55.00, C≤1:00.00
-      1: { S: 45, A: 50, B: 55, C: 60 },
-      // BOX JUMP OVER — 팀 기록(초). S≤2:25.00, A≤2:33.00, B≤2:45.00, C≤2:55.00
-      2: { S: 145, A: 153, B: 165, C: 175 },
-      // REACTION INTELLIGENCE — 팀 기록(초). S≤1:30.00, A≤1:35.00, B≤1:40.00, C≤1:45.00
-      3: { S: 90, A: 95, B: 100, C: 105 },
-      // FARMER'S CARRY — 팀 기록(초). S≤2:34.00, A≤2:40.00, B≤2:51.00, C≤3:02.00
-      4: { S: 154, A: 160, B: 171, C: 182 },
-      // ROWING(ENDURANCE) — 팀 기록(초). S≤3:18.00, A≤3:25.00, B≤3:35.00, C≤3:45.00
-      5: { S: 198, A: 205, B: 215, C: 225 },
-    };
+    /** 스파이더 등급표 lookup — STAGE 1 표 기준, STAGE 2는 축별 매핑 */
+    function spiderGradeThresholdIndex(metricIndex) {
+      const map = STAGE_CFG.spiderGradeThresholdByMetric;
+      if (map && map[metricIndex] != null) return map[metricIndex];
+      return metricIndex;
+    }
 
-    /** 팀 합산(초) → 등급. 기준표 미입력 종목은 D */
+    function getSpiderGradeThreshold(metricIndex) {
+      return STAGE1_TEAM_GRADE_THRESHOLDS[spiderGradeThresholdIndex(metricIndex)];
+    }
+
+    /** 팀 합산(초) → 등급. STAGE 1 등급표 기준 */
     function metricGradeFromTeamTotalSeconds(totalSec, metricIndex) {
       if (totalSec === null || !Number.isFinite(totalSec)) return "D";
-      const t = TEAM_GRADE_THRESHOLDS[metricIndex];
+      const t = getSpiderGradeThreshold(metricIndex);
       if (!t || t.S == null || t.A == null || t.B == null || t.C == null) return "D";
       if (totalSec <= t.S) return "S";
       if (totalSec <= t.A) return "A";
