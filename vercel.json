@@ -1,3 +1,6 @@
 {
-  "rewrites": [{ "source": "/", "destination": "/COMBINE_PRE.html" }]
+  "rewrites": [
+    { "source": "/", "destination": "/COMBINE_PRE.html" },
+    { "source": "/stage2", "destination": "/COMBINE_STAGE2.html" }
+  ]
 }

@@ -1867,7 +1867,8 @@
       border: none;
     }
     .ranking-row--p1 .ranking-row__rank,
-    .ranking-row--p2 .ranking-row__rank {
+    .ranking-row--p2 .ranking-row__rank,
+    .ranking-row--p3 .ranking-row__rank {
       color: #000;
     }
     .ranking-row--pending td {
@@ -1932,7 +1933,7 @@
     </div>
 
     <aside class="panel-inputs no-print">
-      <h1>측정값 입력</h1>
+      <h1 id="mainPanelTitle">측정값 입력</h1>
       <div class="field">
         <label for="participantName">팀명</label>
         <input type="text" id="participantName" placeholder="이름" autocomplete="name" />
@@ -2133,8 +2134,10 @@
      *      metrics_history jsonb,
      *      avg_manual text,
      *      summary_avg text,
-     *      updated_at int8
+     *      updated_at int8,
+     *      stage int default 1
      *    );
+     *    alter table public.roster add column if not exists stage int default 1;
      *    alter table public.roster add column if not exists metrics_history jsonb;
      *    alter table public.roster enable row level security;
      *    drop policy if exists "roster anon all" on public.roster;
@@ -2155,7 +2158,16 @@
     };
 
     /* 카드 그리드(배경): 1 좌상 HANDGRIP · 2 우상 VERTICAL JUMP · 3 좌중 NORDIC · 4 우중 REACTION · 5 좌하 5-10-5 · 6 우하 ZIGZAG */
-    const DEFAULT_METRICS = [
+    function resolveAppStage() {
+      const params = new URLSearchParams(location.search);
+      const fromUrl = Number(params.get("stage"));
+      if (fromUrl === 2) return 2;
+      if (/stage2/i.test(location.pathname)) return 2;
+      return 1;
+    }
+    const APP_STAGE = resolveAppStage();
+
+    const STAGE1_METRICS = [
       { label: "SHUTTLE RUN", unit: "MM:SS.ss" },
       { label: "SLED PUSH", unit: "MM:SS.ss" },
       { label: "BOX JUMP OVER", unit: "MM:SS.ss" },
@@ -2163,12 +2175,72 @@
       { label: "FARMER'S CARRY", unit: "MM:SS.ss" },
       { label: "ROWING", unit: "MM:SS.ss" },
     ];
-    /** SLED PUSH(index 1): 1~3회차 미실시(총점·랭킹 제외, 레이더 S 고정), 4~6회차는 정상 포함 */
+    const STAGE2_METRICS = [
+      { label: "SHUTTLE RUN", unit: "MM:SS.ss" },
+      { label: "SLED PULL", unit: "MM:SS.ss" },
+      { label: "BURPEE BOX JUMP OVER", unit: "MM:SS.ss" },
+      { label: "REACTION INTELLIGENCE", unit: "MM:SS.ss" },
+      { label: "FARMER'S CARRY", unit: "MM:SS.ss" },
+      { label: "SKIERG", unit: "MM:SS.ss" },
+    ];
+    const STAGE1_RANKING_HEADERS = [
+      { en: "SPEED", ko: "셔틀런" },
+      { en: "POWER", ko: "슬레드 푸시" },
+      { en: "VERTICAL", ko: "박스 점프 오버" },
+      { en: "COGNITION", ko: "반응 지능 테스트" },
+      { en: "STRENGTH", ko: "파머스 캐리" },
+      { en: "ENDURANCE", ko: "로잉" },
+    ];
+    const STAGE2_RANKING_HEADERS = [
+      { en: "SPEED", ko: "셔틀런" },
+      { en: "POWER", ko: "슬레드 풀" },
+      { en: "VERTICAL", ko: "버피 박스 점프 오버" },
+      { en: "COGNITION", ko: "반응 지능 테스트" },
+      { en: "STRENGTH", ko: "파머스 캐리" },
+      { en: "ENDURANCE", ko: "SKIERG (200m)" },
+    ];
+    const STAGE_CONFIGS = {
+      1: {
+        metrics: STAGE1_METRICS,
+        rankingHeaders: STAGE1_RANKING_HEADERS,
+        maxSession: 6,
+        rankingAdvanceCount: 2,
+        sledPushSkippedSessions: new Set([1, 2, 3]),
+        storageKey: "combine_print_roster_v1",
+        appTitle: "UA NEXT COMBINE",
+        panelTitle: "측정값 입력",
+      },
+      2: {
+        metrics: STAGE2_METRICS,
+        rankingHeaders: STAGE2_RANKING_HEADERS,
+        maxSession: 2,
+        rankingAdvanceCount: 3,
+        sledPushSkippedSessions: new Set(),
+        storageKey: "combine_print_roster_v2",
+        appTitle: "UA NEXT COMBINE — STAGE 2",
+        panelTitle: "STAGE 2 — 측정값 입력",
+      },
+    };
+    const STAGE_CFG = STAGE_CONFIGS[APP_STAGE] || STAGE_CONFIGS[1];
+    let DEFAULT_METRICS = STAGE_CFG.metrics;
+    let RANKING_EVENT_HEADERS = STAGE_CFG.rankingHeaders;
+    const MAX_SESSION = STAGE_CFG.maxSession;
+    const RANKING_ADVANCE_COUNT = STAGE_CFG.rankingAdvanceCount;
+    const ROSTER_STORAGE_KEY = STAGE_CFG.storageKey;
+
+    function participantStage(p) {
+      return p && p.stage != null ? Number(p.stage) : 1;
+    }
+
+    function isCurrentStageParticipant(p) {
+      return participantStage(p) === APP_STAGE;
+    }
+
+    /** SLED PUSH(index 1): STAGE1만 1~3회차 미실시 — STAGE2는 6종목 전부 포함 */
     const SLED_PUSH_EVENT_INDEX = 1;
-    const SLED_PUSH_SKIPPED_SESSIONS = new Set([1, 2, 3]);
 
     function isSledPushSkippedForSession(session) {
-      return SLED_PUSH_SKIPPED_SESSIONS.has(Number(session) || 1);
+      return STAGE_CFG.sledPushSkippedSessions.has(Number(session) || 1);
     }
 
     function isEventExcludedFromTotal(eventIndex, session) {
@@ -2226,8 +2298,6 @@
     let editingMemberId = null;
     /** 팀원 추가 폼이 열린 그룹키(`회차-팀명`) */
     let addingTeamKey = null;
-
-    const ROSTER_STORAGE_KEY = "combine_print_roster_v1";
 
     /* ===== Supabase 동기화 레이어 ===== */
     let sbClient = null;
@@ -2368,7 +2438,10 @@
     function getTeamMembers(session, team) {
       return rosterParticipants
         .filter(
-          (p) => (p.session || 1) === session && String(p.team || "") === String(team || "")
+          (p) =>
+            isCurrentStageParticipant(p) &&
+            (p.session || 1) === session &&
+            String(p.team || "") === String(team || "")
         )
         .sort((a, b) => String(a.id).localeCompare(String(b.id)));
     }
@@ -2376,7 +2449,10 @@
     function getTeamMembersInList(list, session, team) {
       return list
         .filter(
-          (p) => (p.session || 1) === session && String(p.team || "") === String(team || "")
+          (p) =>
+            isCurrentStageParticipant(p) &&
+            (p.session || 1) === session &&
+            String(p.team || "") === String(team || "")
         )
         .sort((a, b) => String(a.id).localeCompare(String(b.id)));
     }
@@ -2400,6 +2476,7 @@
         gender: p.gender === "F" ? "F" : "M",
         session: p.session || 1,
         team: p.team || "",
+        stage: p.stage != null ? Number(p.stage) : APP_STAGE,
         metrics: metricsArr6(p.metrics),
         metrics_history: metricsHistoryArr6(p.metricsHistory),
         avg_manual: p.avgManual || "",
@@ -2420,6 +2497,7 @@
         gender: d.gender === "F" ? "F" : "M",
         session: d.session || 1,
         team: d.team || "",
+        stage: d.stage != null ? Number(d.stage) : 1,
         metrics,
         metricsHistory,
         avgManual: d.avg_manual || "",
@@ -2476,6 +2554,7 @@
       const rows = data || [];
       const json = JSON.stringify(rows);
       rosterParticipants = rows.map((d) => participantFromRow(d, { skipSeed: true }));
+      rosterParticipants = rosterParticipants.filter(isCurrentStageParticipant);
       rosterParticipants = rosterParticipants.map((p) => {
         if (!p.team || !isTeamAnchorParticipant(p, rosterParticipants)) return p;
         return {
@@ -2536,6 +2615,13 @@
             const { metrics_history, ...rowNoHist } = row;
             sbClient.from(dbTable()).upsert(rowNoHist).then(({ error: e2 }) => {
               if (e2) setSyncBadge("err", "저장 오류");
+            });
+            return;
+          }
+          if (error && /\bstage\b/i.test(String(error.message || ""))) {
+            const { stage, ...rowNoStage } = row;
+            sbClient.from(dbTable()).upsert(rowNoStage).then(({ error: e3 }) => {
+              if (e3) setSyncBadge("err", "저장 오류");
             });
             return;
           }
@@ -2609,7 +2695,11 @@
     /** 특정 회차·팀·성별의 현재 등록 인원 수 */
     function countTeamGender(session, team, gender) {
       return rosterParticipants.filter(
-        (p) => p.session === session && p.team === team && p.gender === gender
+        (p) =>
+          isCurrentStageParticipant(p) &&
+          p.session === session &&
+          p.team === team &&
+          p.gender === gender
       ).length;
     }
 
@@ -2617,6 +2707,7 @@
     function genderHasRoom(session, team, gender, excludeId) {
       const count = rosterParticipants.filter(
         (p) =>
+          isCurrentStageParticipant(p) &&
           p.session === session &&
           p.team === team &&
           p.gender === gender &&
@@ -2629,7 +2720,7 @@
     function teamNamesInSession(session) {
       const set = new Set();
       rosterParticipants.forEach((p) => {
-        if (p.session === session && p.team) set.add(p.team);
+        if (isCurrentStageParticipant(p) && p.session === session && p.team) set.add(p.team);
       });
       return Array.from(set);
     }
@@ -2644,7 +2735,9 @@
     }
 
     function getFilteredRoster() {
-      return rosterParticipants.filter((p) => (p.session || 1) === rosterRegSession);
+      return rosterParticipants.filter(
+        (p) => isCurrentStageParticipant(p) && (p.session || 1) === rosterRegSession
+      );
     }
 
     function indexToAlphaLabel(idx) {
@@ -2683,7 +2776,7 @@
       currentCardSession = null; // 개인 모드 — 팀 합계 모드 해제
       document.getElementById("participantName").value = p.name || "";
       currentCardTeam = p.team ? String(p.team) : "";
-      if (p.session >= 1 && p.session <= 6) {
+      if (p.session >= 1 && p.session <= MAX_SESSION) {
         rosterRegSession = p.session;
         updateRegSessionButtons();
       }
@@ -2713,7 +2806,7 @@
       currentCardSession = session;
       currentCardTeam = team ? String(team) : "";
       activeRosterId = null; // 팀 모드에서는 개인 선택 해제
-      if (session >= 1 && session <= 6) {
+      if (session >= 1 && session <= MAX_SESSION) {
         rosterRegSession = session;
         updateRegSessionButtons();
       }
@@ -3074,6 +3167,7 @@
         gender: mem.gender,
         session,
         team: teamName,
+        stage: APP_STAGE,
         metricsHistory: [[], [], [], [], [], []],
         updatedAt: Date.now(),
       }));
@@ -3424,7 +3518,7 @@
       const ev = Number(params.get("event"));
       if (ev >= 1 && ev <= 6) stationEventIndex = ev - 1;
       const ses = Number(params.get("session"));
-      if (ses >= 1 && ses <= 6) stationSessionNum = ses;
+      if (ses >= 1 && ses <= MAX_SESSION) stationSessionNum = ses;
       const teamParam = params.get("team");
       if (teamParam) stationTeam = teamParam;
 
@@ -3443,7 +3537,7 @@
       });
 
       const sesHost = document.getElementById("stationSessionPills");
-      for (let s = 1; s <= 6; s++) {
+      for (let s = 1; s <= MAX_SESSION; s++) {
         const b = document.createElement("button");
         b.type = "button";
         b.className = "station-pill" + (s === stationSessionNum ? " is-active" : "");
@@ -3732,7 +3826,7 @@
     function clearSessionAllRecords(session) {
       const cleared = [];
       rosterParticipants = rosterParticipants.map((p) => {
-        if ((p.session || 1) !== session) return p;
+        if (!isCurrentStageParticipant(p) || (p.session || 1) !== session) return p;
         const next = {
           ...p,
           metrics: ["", "", "", "", "", ""],
@@ -3953,14 +4047,6 @@
     }
 
     /* ===== 랭킹 보드 (확장 디스플레이) ===== */
-    const RANKING_EVENT_HEADERS = [
-      { en: "SPEED", ko: "셔틀런" },
-      { en: "POWER", ko: "슬레드 푸시" },
-      { en: "VERTICAL", ko: "박스 점프 오버" },
-      { en: "COGNITION", ko: "반응 지능 테스트" },
-      { en: "STRENGTH", ko: "파머스 캐리" },
-      { en: "ENDURANCE", ko: "로잉" },
-    ];
     const RANKING_EVENT_SHIFT_SUFFIX = {
       1: "power",
       2: "vertical",
@@ -4055,14 +4141,14 @@
       const badge = document.getElementById("syncBadge");
       if (badge) badge.hidden = true;
       const ses = Number(params.get("session"));
-      if (ses >= 1 && ses <= 6) rankingSessionNum = ses;
+      if (ses >= 1 && ses <= MAX_SESSION) rankingSessionNum = ses;
       setTimeout(tryAppFullscreen, 400);
       const rv = document.getElementById("rankingView");
       if (rv) rv.addEventListener("click", tryAppFullscreen, { once: true });
       document.addEventListener("keydown", (e) => {
         if (!document.body.classList.contains("ranking-mode")) return;
         const n = Number(e.key);
-        if (n >= 1 && n <= 6) {
+        if (n >= 1 && n <= MAX_SESSION) {
           rankingSessionNum = n;
           renderRankingView();
         }
@@ -4090,7 +4176,7 @@
     function renderRankingView() {
       const body = document.getElementById("rankingBody");
       if (!body) return;
-      document.title = `${rankingSessionNum}회차 RANKING — UA NEXT COMBINE`;
+      document.title = `${rankingSessionNum}회차 RANKING — ${STAGE_CFG.appTitle}`;
 
       const { ranked, pending, teams } = buildSessionRankings(rankingSessionNum);
 
@@ -4117,13 +4203,14 @@
         let rowCls = "ranking-row";
         if (!isPending && rank === 1) rowCls += " ranking-row--p1";
         else if (!isPending && rank === 2) rowCls += " ranking-row--p2";
-        else if (!isPending && rank >= 3) rowCls += " ranking-row--rank-sub";
+        else if (!isPending && rank === 3 && RANKING_ADVANCE_COUNT >= 3) rowCls += " ranking-row--p3";
+        else if (!isPending && rank > RANKING_ADVANCE_COUNT) rowCls += " ranking-row--rank-sub";
         else if (isPending) rowCls += " ranking-row--pending";
 
         const badge =
-          !isPending && rank <= 2
+          !isPending && rank <= RANKING_ADVANCE_COUNT
             ? `<span class="ranking-row__badge">NEXT ROUND</span>`
-            : !isPending && rank >= 3
+            : !isPending && rank > RANKING_ADVANCE_COUNT
               ? `<span class="ranking-row__badge ranking-row__badge--spacer" aria-hidden="true">NEXT ROUND</span>`
               : "";
 
@@ -4520,6 +4607,7 @@
       }
     }
 
+    initStageUi();
     buildMetricRows();
     syncCard();
     initRoster();
@@ -4583,8 +4671,25 @@
       if (img) img.src = `assets/card-bg.png?v=${Date.now()}`;
     }
 
+    function initStageUi() {
+      document.title = STAGE_CFG.appTitle;
+      const panelTitle = document.getElementById("mainPanelTitle");
+      if (panelTitle) panelTitle.textContent = STAGE_CFG.panelTitle;
+      document.querySelectorAll("[data-reg-session]").forEach((btn) => {
+        const s = Number(btn.dataset.regSession);
+        btn.hidden = s > MAX_SESSION;
+      });
+      if (rosterRegSession > MAX_SESSION) {
+        rosterRegSession = 1;
+        updateRegSessionButtons();
+      }
+      if (stationSessionNum > MAX_SESSION) stationSessionNum = 1;
+      if (rankingSessionNum > MAX_SESSION) rankingSessionNum = 1;
+    }
+
     /* ===== 실시간 동기화 & 스테이션/랭킹 모드 부트스트랩 ===== */
     (async function bootstrapSync() {
+      initStageUi();
       initCardBgImage();
       const params = new URLSearchParams(location.search);
       const isStation = params.get("mode") === "station";
