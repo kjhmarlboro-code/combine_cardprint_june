@@ -2210,6 +2210,7 @@
         appTitle: "UA NEXT COMBINE",
         panelTitle: "측정값 입력",
         rankingBg: "assets/ranking-bg.png",
+        rankingAdvanceBadge: "NEXT ROUND",
       },
       2: {
         metrics: STAGE2_METRICS,
@@ -2221,6 +2222,7 @@
         appTitle: "UA NEXT COMBINE — STAGE 2",
         panelTitle: "STAGE 2 — 측정값 입력",
         rankingBg: "assets/ranking-bg-stage2.png",
+        rankingAdvanceBadge: "FINALIST",
       },
     };
     const STAGE_CFG = STAGE_CONFIGS[APP_STAGE] || STAGE_CONFIGS[1];
@@ -4209,11 +4211,12 @@
         else if (!isPending && rank > RANKING_ADVANCE_COUNT) rowCls += " ranking-row--rank-sub";
         else if (isPending) rowCls += " ranking-row--pending";
 
+        const advanceBadge = STAGE_CFG.rankingAdvanceBadge || "NEXT ROUND";
         const badge =
           !isPending && rank <= RANKING_ADVANCE_COUNT
-            ? `<span class="ranking-row__badge">NEXT ROUND</span>`
+            ? `<span class="ranking-row__badge">${escapeHtml(advanceBadge)}</span>`
             : !isPending && rank > RANKING_ADVANCE_COUNT
-              ? `<span class="ranking-row__badge ranking-row__badge--spacer" aria-hidden="true">NEXT ROUND</span>`
+              ? `<span class="ranking-row__badge ranking-row__badge--spacer" aria-hidden="true">${escapeHtml(advanceBadge)}</span>`
               : "";
 
         const rankCell = isPending
