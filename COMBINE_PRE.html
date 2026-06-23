@@ -2239,6 +2239,7 @@
         rankingBg: "assets/ranking-bg.png",
         rankingAdvanceBadge: "NEXT ROUND",
         spiderGradeThresholdByMetric: null,
+        cardBg: "assets/card-bg.png",
       },
       2: {
         metrics: STAGE2_METRICS,
@@ -2252,6 +2253,7 @@
         rankingBg: "assets/ranking-bg-stage2.png",
         rankingAdvanceBadge: "FINALIST",
         spiderGradeThresholdByMetric: STAGE2_SPIDER_GRADE_THRESHOLD_BY_METRIC,
+        cardBg: "assets/card-bg-stage2.png",
       },
     };
     const STAGE_CFG = STAGE_CONFIGS[APP_STAGE] || STAGE_CONFIGS[1];
@@ -4692,7 +4694,7 @@
 
     function initCardBgImage() {
       const img = document.getElementById("cardBgImg");
-      if (img) img.src = `assets/card-bg.png?v=${Date.now()}`;
+      if (img) img.src = `${STAGE_CFG.cardBg || "assets/card-bg.png"}?v=${Date.now()}`;
     }
 
     function initStageUi() {
