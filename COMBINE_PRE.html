@@ -47,6 +47,7 @@
       --overlay-metric-size-factor: 0.6091875;
       /* 6종목 숫자: 세로는 유지, 가로만 추가 배율 (scaleX에 곱함) — 기준 1.2에 1.1배 추가 */
       --overlay-metric-stretch-x: 0.66;
+      --overlay-metric-color: var(--cyan);
       /* 윗줄 좌·우: HANDGRIP(0), VERTICAL JUMP(1) 기록 세로 위치 (동일 높이) */
       --overlay-metric-handgrip-offset-y: 4px;
       /* 가운데 줄: NORDIC HAMSTRING(2), REACTION INTELLIGENCE(3) 동일 높이 */
@@ -925,7 +926,7 @@
       display: block;
       font-family: "NeuePlak-SemiBold", "Inter", "Noto Sans KR", system-ui, sans-serif;
       font-weight: normal;
-      color: var(--cyan);
+      color: var(--overlay-metric-color);
       font-size: calc(var(--overlay-avg-font-size) * var(--overlay-metric-size-factor));
       line-height: 1;
       letter-spacing: var(--overlay-avg-tracking);
@@ -2240,6 +2241,7 @@
         rankingAdvanceBadge: "NEXT ROUND",
         spiderGradeThresholdByMetric: null,
         cardBg: "assets/card-bg.png",
+        cardMetricColor: "var(--cyan)",
       },
       2: {
         metrics: STAGE2_METRICS,
@@ -2254,6 +2256,7 @@
         rankingAdvanceBadge: "FINALIST",
         spiderGradeThresholdByMetric: STAGE2_SPIDER_GRADE_THRESHOLD_BY_METRIC,
         cardBg: "assets/card-bg-stage2.png",
+        cardMetricColor: "#282828",
       },
     };
     const STAGE_CFG = STAGE_CONFIGS[APP_STAGE] || STAGE_CONFIGS[1];
@@ -4711,6 +4714,10 @@
       }
       if (stationSessionNum > MAX_SESSION) stationSessionNum = 1;
       if (rankingSessionNum > MAX_SESSION) rankingSessionNum = 1;
+      document.documentElement.style.setProperty(
+        "--overlay-metric-color",
+        STAGE_CFG.cardMetricColor || "var(--cyan)"
+      );
     }
 
     /* ===== 실시간 동기화 & 스테이션/랭킹 모드 부트스트랩 ===== */
