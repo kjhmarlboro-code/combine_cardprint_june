@@ -2209,6 +2209,7 @@
         storageKey: "combine_print_roster_v1",
         appTitle: "UA NEXT COMBINE",
         panelTitle: "측정값 입력",
+        rankingBg: "assets/ranking-bg.png",
       },
       2: {
         metrics: STAGE2_METRICS,
@@ -2219,6 +2220,7 @@
         storageKey: "combine_print_roster_v2",
         appTitle: "UA NEXT COMBINE — STAGE 2",
         panelTitle: "STAGE 2 — 측정값 입력",
+        rankingBg: "assets/ranking-bg-stage2.png",
       },
     };
     const STAGE_CFG = STAGE_CONFIGS[APP_STAGE] || STAGE_CONFIGS[1];
@@ -4136,7 +4138,7 @@
       updateRankingStageScale();
       const rankingBg = document.getElementById("rankingBgImg");
       if (rankingBg) {
-        rankingBg.src = `assets/ranking-bg.png?v=${Date.now()}`;
+        rankingBg.src = `${STAGE_CFG.rankingBg || "assets/ranking-bg.png"}?v=${Date.now()}`;
       }
       const badge = document.getElementById("syncBadge");
       if (badge) badge.hidden = true;
