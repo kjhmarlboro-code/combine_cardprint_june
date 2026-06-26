@@ -1545,6 +1545,26 @@
     .ranking-view[hidden] {
       display: none;
     }
+    .ranking-pause-banner {
+      position: absolute;
+      top: 18px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 25;
+      padding: 8px 18px;
+      border-radius: 999px;
+      background: rgba(0, 0, 0, 0.78);
+      border: 2px solid #03ff33;
+      color: #03ff33;
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      pointer-events: none;
+      user-select: none;
+    }
+    .ranking-pause-banner[hidden] {
+      display: none !important;
+    }
     .ranking-body {
       position: absolute;
       inset: 0;
@@ -2140,6 +2160,7 @@
         fetchpriority="high"
       />
       <div class="ranking-body" id="rankingBody"></div>
+      <div class="ranking-pause-banner" id="rankingPauseBanner" hidden>⏸ PAUSE — = 키로 해제</div>
       <div class="ranking-final-controls no-print" id="rankingFinalControls" hidden>
         <button type="button" id="rankingPauseBtn">PAUSE</button>
         <button type="button" id="rankingReveal3Btn" class="ranking-final-controls__secondary">3위 공개 (3)</button>
@@ -2671,8 +2692,25 @@
       }
       const rows = data || [];
       const json = JSON.stringify(rows);
-      rosterParticipants = rows.map((d) => participantFromRow(d, { skipSeed: true }));
-      rosterParticipants = rosterParticipants.filter(isCurrentStageParticipant);
+      const prevById = new Map(
+        rosterParticipants.filter(isCurrentStageParticipant).map((p) => [p.id, p])
+      );
+      const incoming = rows
+        .map((d) => participantFromRow(d, { skipSeed: true }))
+        .filter(isCurrentStageParticipant);
+      const mergedById = new Map();
+      incoming.forEach((p) => mergedById.set(p.id, p));
+      prevById.forEach((local, id) => {
+        const remote = mergedById.get(id);
+        if (!remote) {
+          mergedById.set(id, local);
+          return;
+        }
+        const localTs = Number(local.updatedAt) || 0;
+        const remoteTs = Number(remote.updatedAt) || 0;
+        if (localTs > remoteTs) mergedById.set(id, local);
+      });
+      rosterParticipants = [...mergedById.values()];
       rosterParticipants = rosterParticipants.map((p) => {
         if (!p.team || !isTeamAnchorParticipant(p, rosterParticipants)) return p;
         return {
@@ -3738,7 +3776,9 @@
       populateStationTeamSelect();
       host.innerHTML = "";
 
-      const sessionMembers = rosterParticipants.filter((p) => (p.session || 1) === stationSessionNum);
+      const sessionMembers = rosterParticipants.filter(
+        (p) => isCurrentStageParticipant(p) && (p.session || 1) === stationSessionNum
+      );
       if (sessionMembers.length === 0) {
         const d = document.createElement("div");
         d.className = "station-empty";
@@ -4219,12 +4259,18 @@
       if (rankingUpdatesPaused) {
         rankingPausedSnapshot = null;
         rankingUpdatesPaused = false;
+        fetchRosterOnce(() => renderRankingView(), { force: true });
       } else {
         rankingPausedSnapshot = JSON.parse(JSON.stringify(rosterParticipants));
         rankingUpdatesPaused = true;
+        renderRankingView();
       }
-      updateRankingFinalControlsUi();
-      renderRankingView();
+      updateRankingPauseBanner();
+    }
+
+    function updateRankingPauseBanner() {
+      const banner = document.getElementById("rankingPauseBanner");
+      if (banner) banner.hidden = !rankingUpdatesPaused;
     }
 
     function rankingRevealCeremonyStep(step) {
@@ -4531,7 +4577,7 @@
           <tbody>${ranked.map(rankingRowHtml).join("")}${pending.map(rankingRowHtml).join("")}</tbody>
         </table>`;
       rankingCeremonyRevealedPrev = cloneRankingCeremonyState(rankingCeremonyRevealed);
-      updateRankingFinalControlsUi();
+      updateRankingPauseBanner();
       updateRankingStageScale();
     }
 
