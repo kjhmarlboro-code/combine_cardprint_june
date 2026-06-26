@@ -553,6 +553,96 @@
       margin: 0 0 16px;
     }
 
+    /* FINAL — 관리자용 실시간 순위 (카드 입력 페이지 하단) */
+    .admin-ranking-preview {
+      margin-top: 20px;
+      padding-top: 14px;
+      border-top: 1px solid rgba(255, 255, 255, 0.12);
+    }
+    .admin-ranking-preview__title {
+      margin: 0 0 4px;
+      font-size: 12px;
+      font-weight: 700;
+      color: #03ff33;
+      letter-spacing: 0.02em;
+    }
+    .admin-ranking-preview__note {
+      display: block;
+      margin: 0 0 8px;
+      font-size: 10px;
+      font-weight: 400;
+      color: rgba(255, 255, 255, 0.45);
+      line-height: 1.4;
+    }
+    .admin-ranking-preview__scroll {
+      overflow-x: auto;
+      overflow-y: auto;
+      max-height: 220px;
+      border-radius: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      background: rgba(0, 0, 0, 0.35);
+    }
+    .admin-ranking-table {
+      width: 100%;
+      min-width: 520px;
+      border-collapse: collapse;
+      font-size: 10px;
+      line-height: 1.25;
+      color: #ddd;
+    }
+    .admin-ranking-table th,
+    .admin-ranking-table td {
+      padding: 4px 5px;
+      text-align: center;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+      white-space: nowrap;
+    }
+    .admin-ranking-table thead th {
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      background: #1a1a1a;
+      color: rgba(255, 255, 255, 0.55);
+      font-weight: 600;
+      font-size: 9px;
+    }
+    .admin-ranking-table .admin-ranking-table__rank {
+      width: 22px;
+      color: #03ff33;
+      font-weight: 700;
+    }
+    .admin-ranking-table .admin-ranking-table__team {
+      text-align: left;
+      max-width: 72px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      font-weight: 600;
+      color: #eee;
+    }
+    .admin-ranking-table .admin-ranking-table__total {
+      font-weight: 700;
+      color: #03ff33;
+      font-variant-numeric: tabular-nums;
+    }
+    .admin-ranking-table tr.admin-ranking-table__row--pending td {
+      color: rgba(255, 255, 255, 0.35);
+    }
+    .admin-ranking-table tr.admin-ranking-table__row--p1 .admin-ranking-table__rank {
+      color: #ffd54f;
+    }
+    .admin-ranking-table tr.admin-ranking-table__row--p2 .admin-ranking-table__rank {
+      color: #cfd8dc;
+    }
+    .admin-ranking-table tr.admin-ranking-table__row--p3 .admin-ranking-table__rank {
+      color: #ffab91;
+    }
+    .admin-ranking-preview__empty {
+      padding: 16px 10px;
+      text-align: center;
+      font-size: 11px;
+      color: rgba(255, 255, 255, 0.4);
+    }
+
     .field {
       margin-bottom: 12px;
     }
@@ -2037,6 +2127,11 @@
           웹 페이지는 보안상 특정 프린터만 자동 지정할 수 없습니다.
           배경·색이 빠지면 인쇄 설정에서 <strong>배경 그래픽</strong>을 켜 주세요.
         </p>
+      </div>
+      <div class="admin-ranking-preview no-print" id="adminRankingPreview" hidden>
+        <h3 class="admin-ranking-preview__title">실시간 순위</h3>
+        <p class="admin-ranking-preview__note">랭킹 화면 PAUSE 중에도 최신 기록이 표시됩니다 (관리자 확인용)</p>
+        <div class="admin-ranking-preview__scroll" id="adminRankingBody"></div>
       </div>
     </aside>
 
@@ -4580,6 +4675,63 @@
       });
     }
 
+    const ADMIN_RANKING_EVENT_SHORT = ["런", "슬레드", "버피", "반응", "웜", "로잉"];
+
+    /** 카드 입력 페이지 하단 — 관리자용 실시간 순위 (랭킹 PAUSE와 무관하게 live 데이터) */
+    function renderAdminRankingPreview() {
+      const wrap = document.getElementById("adminRankingPreview");
+      const body = document.getElementById("adminRankingBody");
+      if (!wrap || !body) return;
+      if (!STAGE_CFG.rankingCeremonyMode) {
+        wrap.hidden = true;
+        return;
+      }
+      wrap.hidden = false;
+      const session = Math.min(Math.max(rankingSessionNum || 1, 1), MAX_SESSION);
+      const { ranked, pending, teams } = buildSessionRankings(session);
+      if (teams.length === 0) {
+        body.innerHTML = `<div class="admin-ranking-preview__empty">${session}회차 등록된 팀이 없습니다.</div>`;
+        return;
+      }
+      const eventHeaders = DEFAULT_METRICS.map((m, i) => {
+        const h = RANKING_EVENT_HEADERS[i] || { ko: m.label };
+        const short = ADMIN_RANKING_EVENT_SHORT[i] || h.ko.slice(0, 4);
+        return `<th title="${escapeHtml(h.ko || m.label)}">${escapeHtml(short)}</th>`;
+      }).join("");
+      function adminRowHtml(entry) {
+        const isPending = !entry.complete;
+        const rank = entry.rank;
+        let rowCls = isPending ? "admin-ranking-table__row--pending" : "";
+        if (!isPending && rank === 1) rowCls = "admin-ranking-table__row--p1";
+        else if (!isPending && rank === 2) rowCls = "admin-ranking-table__row--p2";
+        else if (!isPending && rank === 3) rowCls = "admin-ranking-table__row--p3";
+        const sums = entry.eventSums || ["", "", "", "", "", ""];
+        const events = sums
+          .map((v) => `<td>${v ? escapeHtml(v) : "—"}</td>`)
+          .join("");
+        const rankCell = isPending ? "—" : String(rank);
+        const totalCell = isPending ? "—" : escapeHtml(entry.totalDisplay || "—");
+        return `<tr class="${rowCls}">
+          <td class="admin-ranking-table__rank">${rankCell}</td>
+          <td class="admin-ranking-table__team">${escapeHtml(entry.team)}</td>
+          ${events}
+          <td class="admin-ranking-table__total">${totalCell}</td>
+        </tr>`;
+      }
+      body.innerHTML = `
+        <table class="admin-ranking-table" aria-label="${session}회차 관리자 순위">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>팀</th>
+              ${eventHeaders}
+              <th>합계</th>
+            </tr>
+          </thead>
+          <tbody>${ranked.map(adminRowHtml).join("")}${pending.map(adminRowHtml).join("")}</tbody>
+        </table>`;
+    }
+
     const RANKING_DESIGN_W = 1920;
     const RANKING_DESIGN_H = 1080;
 
@@ -5292,6 +5444,7 @@
         "--overlay-metric-color",
         STAGE_CFG.cardMetricColor || "var(--cyan)"
       );
+      renderAdminRankingPreview();
     }
 
     /* ===== 실시간 동기화 & 스테이션/랭킹 모드 부트스트랩 ===== */
@@ -5310,6 +5463,7 @@
           if (!rankingUpdatesPaused) renderRankingView();
         } else {
           renderRosterStats();
+          renderAdminRankingPreview();
           if (!editingMemberId && !addingTeamKey) renderRosterList();
           const ae = document.activeElement;
           const typingMain =
