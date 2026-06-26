@@ -4306,6 +4306,7 @@
       if (rankingUpdatesPaused) {
         rankingPausedSnapshot = null;
         rankingUpdatesPaused = false;
+        renderRankingView();
         fetchRosterOnce(() => renderRankingView(), { force: true });
       } else {
         rankingPausedSnapshot = JSON.parse(JSON.stringify(rosterParticipants));
@@ -4441,7 +4442,7 @@
       document.addEventListener("keydown", (e) => {
         if (!document.body.classList.contains("ranking-mode")) return;
         if (isRankingCeremonyMode()) {
-          if (e.key === "=" || e.code === "Equal") {
+          if (e.key === "=" || e.code === "Equal" || e.code === "NumpadEqual") {
             e.preventDefault();
             rankingTogglePause();
             return;
@@ -4543,7 +4544,7 @@
       function rankingRowHtml(entry) {
         const isPending = !entry.complete;
         const rank = entry.rank;
-        const ceremonyMaskActive = ceremonyMode && rankingCeremonyPrep && !rankingUpdatesPaused;
+        const ceremonyMaskActive = ceremonyMode && rankingCeremonyPrep;
         const ceremonyHidden =
           ceremonyMaskActive && !isPending && !isRankingRowCeremonyRevealed(rank, totalRanked);
         const ceremonyJustRevealed =
