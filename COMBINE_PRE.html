@@ -575,7 +575,7 @@
       line-height: 1.4;
     }
     .admin-ranking-preview__scroll {
-      overflow-x: auto;
+      overflow: hidden;
       overflow-y: auto;
       max-height: 220px;
       border-radius: 8px;
@@ -584,18 +584,19 @@
     }
     .admin-ranking-table {
       width: 100%;
-      min-width: 520px;
+      table-layout: fixed;
       border-collapse: collapse;
-      font-size: 10px;
-      line-height: 1.25;
+      font-size: 9px;
+      line-height: 1.2;
       color: #ddd;
     }
     .admin-ranking-table th,
     .admin-ranking-table td {
-      padding: 4px 5px;
+      padding: 3px 1px;
       text-align: center;
       border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
     .admin-ranking-table thead th {
       position: sticky;
@@ -604,25 +605,38 @@
       background: #1a1a1a;
       color: rgba(255, 255, 255, 0.55);
       font-weight: 600;
-      font-size: 9px;
+      font-size: 8px;
+      letter-spacing: -0.04em;
+      white-space: nowrap;
     }
     .admin-ranking-table .admin-ranking-table__rank {
-      width: 22px;
+      width: 6%;
       color: #03ff33;
       font-weight: 700;
+      font-size: 9px;
     }
     .admin-ranking-table .admin-ranking-table__team {
+      width: 13%;
       text-align: left;
-      max-width: 72px;
-      overflow: hidden;
-      text-overflow: ellipsis;
+      padding-left: 3px;
       font-weight: 600;
       color: #eee;
+      white-space: nowrap;
+    }
+    .admin-ranking-table .admin-ranking-table__event {
+      font-size: 8px;
+      letter-spacing: -0.05em;
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
     }
     .admin-ranking-table .admin-ranking-table__total {
+      width: 12%;
       font-weight: 700;
       color: #03ff33;
+      font-size: 8px;
+      letter-spacing: -0.05em;
       font-variant-numeric: tabular-nums;
+      white-space: nowrap;
     }
     .admin-ranking-table tr.admin-ranking-table__row--pending td {
       color: rgba(255, 255, 255, 0.35);
@@ -4677,6 +4691,13 @@
 
     const ADMIN_RANKING_EVENT_SHORT = ["런", "슬레드", "버피", "반응", "웜", "로잉"];
 
+    function formatAdminRankingTime(value) {
+      const t = String(value || "").trim();
+      if (!t) return "—";
+      if (t.startsWith("00:")) return t.slice(3);
+      return t;
+    }
+
     /** 카드 입력 페이지 하단 — 관리자용 실시간 순위 (랭킹 PAUSE와 무관하게 live 데이터) */
     function renderAdminRankingPreview() {
       const wrap = document.getElementById("adminRankingPreview");
@@ -4707,10 +4728,10 @@
         else if (!isPending && rank === 3) rowCls = "admin-ranking-table__row--p3";
         const sums = entry.eventSums || ["", "", "", "", "", ""];
         const events = sums
-          .map((v) => `<td>${v ? escapeHtml(v) : "—"}</td>`)
+          .map((v) => `<td class="admin-ranking-table__event">${escapeHtml(formatAdminRankingTime(v))}</td>`)
           .join("");
         const rankCell = isPending ? "—" : String(rank);
-        const totalCell = isPending ? "—" : escapeHtml(entry.totalDisplay || "—");
+        const totalCell = isPending ? "—" : escapeHtml(formatAdminRankingTime(entry.totalDisplay));
         return `<tr class="${rowCls}">
           <td class="admin-ranking-table__rank">${rankCell}</td>
           <td class="admin-ranking-table__team">${escapeHtml(entry.team)}</td>
@@ -4720,6 +4741,12 @@
       }
       body.innerHTML = `
         <table class="admin-ranking-table" aria-label="${session}회차 관리자 순위">
+          <colgroup>
+            <col class="admin-ranking-table__rank" />
+            <col class="admin-ranking-table__team" />
+            <col span="6" />
+            <col class="admin-ranking-table__total" />
+          </colgroup>
           <thead>
             <tr>
               <th>#</th>
