@@ -4296,6 +4296,8 @@
     const CEREMONY_EVENT_INTERVAL_MS = 520;
     const CEREMONY_EVENT_POP_MS = 480;
     const CEREMONY_TOTAL_DURATION_MS = 1800;
+    const CEREMONY_LOWER_RANK_INTERVAL_MS = 300;
+    const CEREMONY_LOWER_RANK_POP_MS = 420;
 
     function createPodiumAnimState() {
       return { eventsShown: 0, popAtIndex: -1, totalAnimSec: null, totalDone: false, rafId: null, timers: [] };
@@ -4305,6 +4307,7 @@
       r2: createPodiumAnimState(),
       r1: createPodiumAnimState(),
     };
+    let rankingLowerAnim = { popAtRank: -1, timers: [] };
 
     function rankToCeremonyStep(rank) {
       if (rank === 3) return "r3";
@@ -4322,8 +4325,47 @@
       if (rank === 1) return state.r1;
       if (rank === 2) return state.r2;
       if (rank === 3) return state.r3;
-      if (rank >= 4) return state.r4to6 >= 2 ? 2 : 0;
+      if (rank >= 4) return rank - 3 <= state.r4to6 ? 2 : 0;
       return 0;
+    }
+
+    function clearLowerRankAnim() {
+      rankingLowerAnim.timers.forEach((id) => clearTimeout(id));
+      rankingLowerAnim.timers = [];
+      rankingLowerAnim.popAtRank = -1;
+    }
+
+    function resetPodiumAnimAll() {
+      ["r3", "r2", "r1"].forEach(clearPodiumAnim);
+      clearLowerRankAnim();
+      rankingPodiumAnim = {
+        r3: createPodiumAnimState(),
+        r2: createPodiumAnimState(),
+        r1: createPodiumAnimState(),
+      };
+    }
+
+    function startLowerRanksReveal() {
+      clearLowerRankAnim();
+      const { ranked } = buildSessionRankings(rankingSessionNum);
+      const lowerRanks = ranked.filter((e) => e.rank >= 4).map((e) => e.rank);
+      if (lowerRanks.length === 0) return;
+      rankingCeremonyRevealed.r4to6 = 0;
+      lowerRanks.forEach((rank, idx) => {
+        const revealAt = (idx + 1) * CEREMONY_LOWER_RANK_INTERVAL_MS;
+        const tid = setTimeout(() => {
+          rankingCeremonyRevealed.r4to6 = idx + 1;
+          rankingLowerAnim.popAtRank = rank;
+          renderRankingView();
+          const popClearId = setTimeout(() => {
+            if (rankingLowerAnim.popAtRank === rank) rankingLowerAnim.popAtRank = -1;
+            renderRankingView();
+          }, CEREMONY_LOWER_RANK_POP_MS);
+          rankingLowerAnim.timers.push(popClearId);
+        }, revealAt);
+        rankingLowerAnim.timers.push(tid);
+      });
+      renderRankingView();
     }
 
     function clearPodiumAnim(step) {
@@ -4333,15 +4375,6 @@
       anim.timers = [];
       if (anim.rafId) cancelAnimationFrame(anim.rafId);
       anim.rafId = null;
-    }
-
-    function resetPodiumAnimAll() {
-      ["r3", "r2", "r1"].forEach(clearPodiumAnim);
-      rankingPodiumAnim = {
-        r3: createPodiumAnimState(),
-        r2: createPodiumAnimState(),
-        r1: createPodiumAnimState(),
-      };
     }
 
     function isPodiumTotalComplete(step) {
@@ -4467,8 +4500,11 @@
 
     function rankingRevealCeremonyStep(step) {
       if (step === "r4to6") {
-        rankingCeremonyRevealed.r4to6 = 2;
-        renderRankingView();
+        const { ranked } = buildSessionRankings(rankingSessionNum);
+        const lowerCount = ranked.filter((e) => e.rank >= 4).length;
+        if (lowerCount <= 0 || rankingCeremonyRevealed.r4to6 >= lowerCount) return;
+        if (rankingLowerAnim.timers.length > 0) return;
+        startLowerRanksReveal();
         return;
       }
       const current = rankingCeremonyRevealed[step];
@@ -4717,6 +4753,8 @@
           !isPending &&
           rankPhase > prevRankPhase &&
           rankPhase >= 1;
+        const lowerRankPop =
+          ceremonyMaskActive && !isPending && rank >= 4 && rankingLowerAnim.popAtRank === rank;
         const ceremonyTeamJustRevealed =
           ceremonyMaskActive &&
           !isPending &&
@@ -4726,7 +4764,7 @@
         let rowCls = "ranking-row";
         if (ceremonyHidden) rowCls += " ranking-row--ceremony-hidden";
         else if (ceremonyTeamJustRevealed) rowCls += " ranking-row--ceremony-team-revealed";
-        else if (ceremonyJustRevealed) rowCls += " ranking-row--ceremony-revealed";
+        else if (lowerRankPop || ceremonyJustRevealed) rowCls += " ranking-row--ceremony-revealed";
         if (rankPhase === 1) {
           rowCls += " ranking-row--ceremony-records";
           if (podiumAnim && podiumAnim.totalAnimSec != null) rowCls += " ranking-row--ceremony-total-active";
@@ -4766,7 +4804,7 @@
             } else if (isPending) {
               display = v ? escapeHtml(v) : "—";
               eventVisible = true;
-            } else if (rankPhase >= 2 || rank >= 4) {
+            } else if (rankPhase >= 2) {
               display = v ? escapeHtml(v) : "—";
               eventVisible = true;
             } else if (rankPhase === 1 && podiumAnim && i < podiumAnim.eventsShown) {
@@ -4781,7 +4819,7 @@
 
         let totalDisplay = "—";
         if (!ceremonyHidden && !isPending) {
-          if (rankPhase >= 2 || rank >= 4) {
+          if (rankPhase >= 2) {
             totalDisplay = escapeHtml(entry.totalDisplay);
           } else if (rankPhase === 1 && podiumAnim && podiumAnim.totalAnimSec != null) {
             totalDisplay = escapeHtml(formatSecondsToClock(podiumAnim.totalAnimSec));
