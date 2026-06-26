@@ -1547,18 +1547,22 @@
     }
     .ranking-pause-banner {
       position: absolute;
-      top: 18px;
+      top: 318px;
       left: 50%;
       transform: translateX(-50%);
       z-index: 25;
-      padding: 8px 18px;
-      border-radius: 999px;
+      max-width: 1600px;
+      padding: 20px 36px;
+      border-radius: 16px;
       background: rgba(0, 0, 0, 0.78);
-      border: 2px solid #03ff33;
+      border: 3px solid #03ff33;
       color: #03ff33;
-      font-size: 18px;
+      font-size: 32px;
       font-weight: 700;
-      letter-spacing: 0.08em;
+      letter-spacing: 0.02em;
+      line-height: 1.45;
+      text-align: center;
+      white-space: normal;
       pointer-events: none;
       user-select: none;
     }
@@ -2160,7 +2164,7 @@
         fetchpriority="high"
       />
       <div class="ranking-body" id="rankingBody"></div>
-      <div class="ranking-pause-banner" id="rankingPauseBanner" hidden>⏸ PAUSE — = 키로 해제</div>
+      <div class="ranking-pause-banner" id="rankingPauseBanner" hidden>갱신된 기록은 모든 측정이 종료된 후 순위와 함께 공개됩니다</div>
       <div class="ranking-final-controls no-print" id="rankingFinalControls" hidden>
         <button type="button" id="rankingPauseBtn">PAUSE</button>
         <button type="button" id="rankingReveal3Btn" class="ranking-final-controls__secondary">3위 공개 (3)</button>
@@ -2574,6 +2578,31 @@
       };
     }
 
+    /** 스테이션 팀 기록: 입력값으로 해당 종목 기록 교체 (랭킹·표시와 일치) */
+    function setParticipantTeamMetric(p, eventIndex, rawValue) {
+      const value = (rawValue || "").trim();
+      const metrics = metricsArr6(p.metrics);
+      const history = metricsHistoryArr6(p.metricsHistory);
+      if (!value) {
+        history[eventIndex] = [];
+        metrics[eventIndex] = "";
+      } else {
+        history[eventIndex] = [{ value, at: Date.now() }];
+        metrics[eventIndex] = value;
+      }
+      let summaryAvg = p.summaryAvg;
+      const total = computeTotalTimeFromMetrics(metrics, p.session);
+      if (total !== null) summaryAvg = formatSecondsToClock(total);
+      else if (!value) summaryAvg = undefined;
+      return {
+        ...p,
+        metrics,
+        metricsHistory: history,
+        summaryAvg: summaryAvg || undefined,
+        updatedAt: Date.now(),
+      };
+    }
+
     function getTeamMembers(session, team) {
       return rosterParticipants
         .filter(
@@ -2678,6 +2707,23 @@
     let lastRosterJson = "";
     let realtimeOk = false;
     let rosterPollTimer = null;
+    const rosterLocalWriteUntil = new Map();
+
+    function markRosterLocalWrites(ids, ms) {
+      const until = Date.now() + (ms != null ? ms : 8000);
+      (ids || []).forEach((id) => {
+        if (id) rosterLocalWriteUntil.set(id, until);
+      });
+    }
+
+    function shouldKeepLocalParticipant(local, remote) {
+      if (!local) return false;
+      const guardUntil = rosterLocalWriteUntil.get(local.id) || 0;
+      if (Date.now() < guardUntil) return true;
+      const localTs = Number(local.updatedAt) || 0;
+      const remoteTs = Number(remote?.updatedAt) || 0;
+      return localTs > remoteTs;
+    }
 
     /** 전체 명단을 한 번 읽어와 로컬에 반영 (변경됐을 때만 onUpdate 호출) */
     async function fetchRosterOnce(onUpdate, opts) {
@@ -2706,9 +2752,7 @@
           mergedById.set(id, local);
           return;
         }
-        const localTs = Number(local.updatedAt) || 0;
-        const remoteTs = Number(remote.updatedAt) || 0;
-        if (localTs > remoteTs) mergedById.set(id, local);
+        if (shouldKeepLocalParticipant(local, remote)) mergedById.set(id, local);
       });
       rosterParticipants = [...mergedById.values()];
       rosterParticipants = rosterParticipants.map((p) => {
@@ -3721,7 +3765,7 @@
       const teams = Array.from(
         new Set(
           rosterParticipants
-            .filter((p) => (p.session || 1) === stationSessionNum && p.team)
+            .filter((p) => isCurrentStageParticipant(p) && (p.session || 1) === stationSessionNum && p.team)
             .map((p) => String(p.team))
         )
       ).sort((a, b) => a.localeCompare(b, "ko"));
@@ -3749,7 +3793,10 @@
     /** 포스트(현재 종목): 팀원 전원 입력 시 해당 종목 4명 합계 (MM:SS.ss) */
     function computeStationEventTeamSum(session, team, eventIndex) {
       const members = rosterParticipants.filter(
-        (p) => (p.session || 1) === session && String(p.team || "") === String(team || "")
+        (p) =>
+          isCurrentStageParticipant(p) &&
+          (p.session || 1) === session &&
+          String(p.team || "") === String(team || "")
       );
       if (members.length === 0) return null;
       const anchor = getTeamAnchorMember(session, team);
@@ -3869,7 +3916,7 @@
           input.placeholder = "MM:SS.ss";
           input.setAttribute("aria-label", `${teamLabel} 팀 기록`);
           const anchor = getTeamAnchorMember(stationSessionNum, g.team) || g.members[0];
-          const cur = getParticipantLastAttemptMetric(anchor || {}, stationEventIndex);
+          const cur = getParticipantBestMetric(anchor || {}, stationEventIndex);
           input.value = cur ? formatMetricDisplayValue(stationEventIndex, cur) : "";
           bindStationInput(input, (formatted) => {
             saveStationTeamValue(stationSessionNum, g.team, formatted);
@@ -4116,6 +4163,7 @@
       rosterParticipants[anchorIdx] = updated;
       dbSetParticipant(updated);
       syncStationTeamMetricsAfterHistoryChange(session, team, eventIndex, Date.now());
+      markRosterLocalWrites(getTeamMembers(session, team).map((p) => p.id));
       persistRosterLocal();
       return true;
     }
@@ -4141,11 +4189,12 @@
       rosterParticipants[anchorIdx] = updated;
       dbSetParticipant(updated);
       syncStationTeamMetricsAfterHistoryChange(session, team, eventIndex, Date.now());
+      markRosterLocalWrites(getTeamMembers(session, team).map((p) => p.id));
       persistRosterLocal();
       return true;
     }
 
-    /** 팀 전체 기록 1개 종목 — 시도는 팀 대표 1명에 저장, 반영은 최고 기록만 팀 전원 */
+    /** 팀 전체 기록 1개 종목 — 팀 대표(anchor)에 저장 후 팀 전원 metrics 동기화 */
     function saveStationTeamValue(session, team, value) {
       const members = getTeamMembers(session, team);
       if (members.length === 0) return;
@@ -4154,24 +4203,14 @@
       if (!anchor) return;
       const anchorIdx = rosterParticipants.findIndex((x) => x.id === anchor.id);
       if (anchorIdx < 0) return;
-      const prevBest = getParticipantBestMetric(anchor, eventIndex);
       const anchorUpdated = syncParticipantMetricsFromHistory(
-        applyMetricAttemptToParticipant(anchor, eventIndex, value)
+        setParticipantTeamMetric(anchor, eventIndex, value)
       );
       const newBest = getParticipantBestMetric(anchorUpdated, eventIndex);
-
-      if (metricSecondsEqual(prevBest, newBest)) {
-        const kept = { ...anchorUpdated, updatedAt: anchor.updatedAt || anchorUpdated.updatedAt };
-        rosterParticipants[anchorIdx] = kept;
-        dbSetParticipant(kept);
-        try {
-          localStorage.setItem(ROSTER_STORAGE_KEY, JSON.stringify(rosterParticipants));
-        } catch (_) {}
-        setTimeout(() => renderStationView(), 0);
-        return;
-      }
+      const savedIds = [];
 
       rosterParticipants[anchorIdx] = anchorUpdated;
+      savedIds.push(anchorUpdated.id);
       dbSetParticipant(anchorUpdated);
 
       members.forEach((p) => {
@@ -4184,10 +4223,18 @@
             m[eventIndex] = newBest;
             return m;
           })(),
+          metricsHistory:
+            p.id === anchor.id
+              ? metricsHistoryArr6(anchorUpdated.metricsHistory)
+              : metricsHistoryArr6(rosterParticipants[i].metricsHistory),
         });
-        rosterParticipants[i] = { ...synced, updatedAt: Date.now() };
-        dbSetParticipant(rosterParticipants[i]);
+        const saved = { ...synced, updatedAt: anchorUpdated.updatedAt };
+        rosterParticipants[i] = saved;
+        savedIds.push(saved.id);
+        dbSetParticipant(saved);
       });
+
+      markRosterLocalWrites(savedIds);
       try {
         localStorage.setItem(ROSTER_STORAGE_KEY, JSON.stringify(rosterParticipants));
       } catch (_) {}
