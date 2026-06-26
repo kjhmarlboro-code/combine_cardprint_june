@@ -1895,57 +1895,9 @@
       font-size: 20px;
       color: rgba(255, 255, 255, 0.4);
     }
-    /* FINAL 랭킹 — PAUSE / 시상식 공개 컨트롤 (운영용, TV 화면에는 거의 안 보임) */
+    /* FINAL 랭킹 — 운영 단축키 전용 (화면에 컨트롤 박스 표시 안 함) */
     .ranking-final-controls {
-      position: absolute;
-      right: 16px;
-      bottom: 16px;
-      z-index: 20;
-      display: flex;
-      flex-wrap: wrap;
-      align-items: center;
-      gap: 8px;
-      max-width: 520px;
-      padding: 10px 12px;
-      border-radius: 10px;
-      background: rgba(0, 0, 0, 0.72);
-      border: 1px solid rgba(255, 255, 255, 0.15);
-      opacity: 0.35;
-      transition: opacity 0.2s;
-      pointer-events: auto;
-    }
-    .ranking-final-controls:hover,
-    .ranking-final-controls:focus-within {
-      opacity: 1;
-    }
-    .ranking-final-controls[hidden] {
       display: none !important;
-    }
-    .ranking-final-controls button {
-      font-family: "Inter", "Noto Sans KR", sans-serif;
-      font-size: 12px;
-      font-weight: 700;
-      letter-spacing: 0.04em;
-      text-transform: uppercase;
-      padding: 8px 12px;
-      border-radius: 6px;
-      border: none;
-      cursor: pointer;
-      color: #000;
-      background: #03ff33;
-    }
-    .ranking-final-controls button.is-paused {
-      background: #ff4444;
-      color: #fff;
-    }
-    .ranking-final-controls button.ranking-final-controls__secondary {
-      background: rgba(255, 255, 255, 0.92);
-    }
-    .ranking-final-controls__status {
-      flex: 1 1 100%;
-      font-size: 11px;
-      color: rgba(255, 255, 255, 0.75);
-      line-height: 1.4;
     }
     .ranking-row--ceremony-hidden .ranking-row__rank-num,
     .ranking-row--ceremony-hidden .ranking-event-value,
@@ -4229,6 +4181,7 @@
     }
     let rankingCeremonyRevealed = createRankingCeremonyState();
     let rankingCeremonyRevealedPrev = createRankingCeremonyState();
+    let rankingCeremonyPrep = false;
 
     function isRankingCeremonyMode() {
       return !!(STAGE_CFG.rankingCeremonyMode && document.body.classList.contains("ranking-mode"));
@@ -4243,33 +4196,23 @@
     }
 
     function isRankingRowCeremonyRevealed(rank, totalRanked, stateOptional) {
-      if (!isRankingCeremonyMode() || totalRanked <= 0) return true;
+      if (!isRankingCeremonyMode() || totalRanked <= 0 || !rankingCeremonyPrep) return true;
       if (rank > totalRanked) return false;
       const state = stateOptional || rankingCeremonyRevealed;
       return isRankCeremonyRevealed(rank, state);
     }
 
-    function rankingCeremonyStatusLabel() {
-      const mark = (on) => (on ? "✓" : "·");
-      return `3위${mark(rankingCeremonyRevealed.r3)} 2위${mark(rankingCeremonyRevealed.r2)} 1위${mark(rankingCeremonyRevealed.r1)} 4~6위${mark(rankingCeremonyRevealed.r4to6)}`;
+    function rankingToggleCeremonyPrep() {
+      rankingCeremonyPrep = !rankingCeremonyPrep;
+      if (rankingCeremonyPrep) {
+        rankingCeremonyRevealed = createRankingCeremonyState();
+        rankingCeremonyRevealedPrev = createRankingCeremonyState();
+      }
+      renderRankingView();
     }
 
     function updateRankingFinalControlsUi() {
-      const panel = document.getElementById("rankingFinalControls");
-      const pauseBtn = document.getElementById("rankingPauseBtn");
-      const status = document.getElementById("rankingFinalStatus");
-      if (!panel) return;
-      const show = isRankingCeremonyMode();
-      panel.hidden = !show;
-      if (!show) return;
-      if (pauseBtn) {
-        pauseBtn.textContent = rankingUpdatesPaused ? "RESUME" : "PAUSE";
-        pauseBtn.classList.toggle("is-paused", rankingUpdatesPaused);
-      }
-      if (status) {
-        const pauseTxt = rankingUpdatesPaused ? "기록 PAUSE (멈춘 시점 고정)" : "실시간 반영 중";
-        status.textContent = `${pauseTxt} · ${rankingCeremonyStatusLabel()} · P=PAUSE · 3/2/1/4=공개 · 0=초기화`;
-      }
+      /* 단축키 전용 — UI 패널 숨김 */
     }
 
     function rankingTogglePause() {
@@ -4299,32 +4242,12 @@
     }
 
     function initRankingFinalControls() {
-      const panel = document.getElementById("rankingFinalControls");
-      if (!panel || !STAGE_CFG.rankingCeremonyMode) return;
-      panel.hidden = false;
+      if (!STAGE_CFG.rankingCeremonyMode) return;
       rankingUpdatesPaused = false;
+      rankingPausedSnapshot = null;
+      rankingCeremonyPrep = false;
       rankingCeremonyRevealed = createRankingCeremonyState();
       rankingCeremonyRevealedPrev = createRankingCeremonyState();
-
-      const bind = (id, fn) => {
-        const el = document.getElementById(id);
-        if (el) {
-          el.addEventListener("click", (e) => {
-            e.stopPropagation();
-            fn();
-          });
-        }
-      };
-      bind("rankingPauseBtn", () => {
-        rankingTogglePause();
-      });
-      bind("rankingReveal3Btn", () => rankingRevealCeremonyStep("r3"));
-      bind("rankingReveal2Btn", () => rankingRevealCeremonyStep("r2"));
-      bind("rankingReveal1Btn", () => rankingRevealCeremonyStep("r1"));
-      bind("rankingReveal4to6Btn", () => rankingRevealCeremonyStep("r4to6"));
-      bind("rankingResetRevealBtn", rankingResetReveal);
-      panel.addEventListener("click", (e) => e.stopPropagation());
-      updateRankingFinalControlsUi();
     }
 
     /** 회차·팀 1팀의 랭킹용 데이터 (1~3회차 SLED PUSH 제외, 4~6회차 6종목) */
@@ -4425,40 +4348,52 @@
       document.addEventListener("keydown", (e) => {
         if (!document.body.classList.contains("ranking-mode")) return;
         if (isRankingCeremonyMode()) {
-          if (e.key === "p" || e.key === "P") {
+          if (e.key === "=" || e.code === "Equal") {
             e.preventDefault();
             rankingTogglePause();
             return;
           }
           if (e.key === "3") {
             e.preventDefault();
+            if (!rankingCeremonyPrep) rankingCeremonyPrep = true;
             rankingRevealCeremonyStep("r3");
             return;
           }
           if (e.key === "2") {
             e.preventDefault();
+            if (!rankingCeremonyPrep) rankingCeremonyPrep = true;
             rankingRevealCeremonyStep("r2");
             return;
           }
           if (e.key === "1") {
             e.preventDefault();
+            if (!rankingCeremonyPrep) rankingCeremonyPrep = true;
             rankingRevealCeremonyStep("r1");
             return;
           }
           if (e.key === "4") {
             e.preventDefault();
+            if (!rankingCeremonyPrep) rankingCeremonyPrep = true;
             rankingRevealCeremonyStep("r4to6");
             return;
           }
           if (e.key === "0") {
             e.preventDefault();
-            rankingResetReveal();
+            if (rankingCeremonyPrep) rankingResetReveal();
+            else rankingToggleCeremonyPrep();
+            return;
+          }
+          if (e.key === "9") {
+            e.preventDefault();
+            rankingCeremonyPrep = false;
+            renderRankingView();
             return;
           }
         }
         const n = Number(e.key);
         if (n >= 1 && n <= MAX_SESSION) {
           rankingSessionNum = n;
+          rankingCeremonyPrep = false;
           rankingCeremonyRevealed = createRankingCeremonyState();
           rankingCeremonyRevealedPrev = createRankingCeremonyState();
           renderRankingView();
@@ -4515,7 +4450,7 @@
       function rankingRowHtml(entry) {
         const isPending = !entry.complete;
         const rank = entry.rank;
-        const ceremonyMaskActive = ceremonyMode && !rankingUpdatesPaused;
+        const ceremonyMaskActive = ceremonyMode && rankingCeremonyPrep && !rankingUpdatesPaused;
         const ceremonyHidden =
           ceremonyMaskActive && !isPending && !isRankingRowCeremonyRevealed(rank, totalRanked);
         const ceremonyJustRevealed =
