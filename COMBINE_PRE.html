@@ -1943,16 +1943,14 @@
       visibility: hidden;
     }
     .ranking-row__event--ceremony-pop .ranking-event-value {
-      animation: rankingEventPop 0.4s ease-out;
+      animation: rankingEventAppear 0.45s ease-out;
     }
-    @keyframes rankingEventPop {
+    @keyframes rankingEventAppear {
       from {
         opacity: 0;
-        transform: scale(0.82);
       }
       to {
         opacity: 1;
-        transform: scale(1);
       }
     }
     .ranking-row--ceremony-revealed {
@@ -4296,10 +4294,11 @@
     let rankingCeremonyPrep = false;
 
     const CEREMONY_EVENT_INTERVAL_MS = 520;
+    const CEREMONY_EVENT_POP_MS = 480;
     const CEREMONY_TOTAL_DURATION_MS = 1800;
 
     function createPodiumAnimState() {
-      return { eventsShown: 0, totalAnimSec: null, totalDone: false, rafId: null, timers: [] };
+      return { eventsShown: 0, popAtIndex: -1, totalAnimSec: null, totalDone: false, rafId: null, timers: [] };
     }
     let rankingPodiumAnim = {
       r3: createPodiumAnimState(),
@@ -4387,14 +4386,27 @@
         return;
       }
       anim.eventsShown = 0;
+      anim.popAtIndex = -1;
       anim.totalDone = false;
       anim.totalAnimSec = null;
       for (let i = 0; i < 6; i++) {
+        const revealAt = (i + 1) * CEREMONY_EVENT_INTERVAL_MS;
         const tid = setTimeout(() => {
           anim.eventsShown = i + 1;
+          anim.popAtIndex = i;
           renderRankingView();
-          if (i === 5) startPodiumTotalCountUp(step, entry.totalSec);
-        }, (i + 1) * CEREMONY_EVENT_INTERVAL_MS);
+          const popClearId = setTimeout(() => {
+            if (anim.popAtIndex === i) anim.popAtIndex = -1;
+            renderRankingView();
+          }, CEREMONY_EVENT_POP_MS);
+          anim.timers.push(popClearId);
+          if (i === 5) {
+            const totalStartId = setTimeout(() => {
+              startPodiumTotalCountUp(step, entry.totalSec);
+            }, CEREMONY_EVENT_POP_MS);
+            anim.timers.push(totalStartId);
+          }
+        }, revealAt);
         anim.timers.push(tid);
       }
       renderRankingView();
@@ -4760,7 +4772,7 @@
             } else if (rankPhase === 1 && podiumAnim && i < podiumAnim.eventsShown) {
               display = v ? escapeHtml(v) : "—";
               eventVisible = true;
-              if (i === podiumAnim.eventsShown - 1) popCls = " ranking-row__event--ceremony-pop";
+              if (i === podiumAnim.popAtIndex) popCls = " ranking-row__event--ceremony-pop";
             }
             const hiddenCls = eventVisible ? "" : " ranking-row__event--ceremony-hidden";
             return `<td class="ranking-row__event${cls}${extraCls}${hiddenCls}${popCls}"><span class="ranking-event-value">${display}</span></td>`;
