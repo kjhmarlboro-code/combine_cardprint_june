@@ -4219,6 +4219,7 @@
     }
     let rankingSessionNum = 1;
     let rankingUpdatesPaused = false;
+    let rankingPausedSnapshot = null;
 
     function createRankingCeremonyState() {
       return { r3: false, r2: false, r1: false, r4to6: false };
@@ -4266,14 +4267,21 @@
         pauseBtn.classList.toggle("is-paused", rankingUpdatesPaused);
       }
       if (status) {
-        const pauseTxt = rankingUpdatesPaused ? "기록 업데이트 PAUSE" : "실시간 반영 중";
+        const pauseTxt = rankingUpdatesPaused ? "기록 PAUSE (멈춘 시점 고정)" : "실시간 반영 중";
         status.textContent = `${pauseTxt} · ${rankingCeremonyStatusLabel()} · P=PAUSE · 3/2/1/4=공개 · 0=초기화`;
       }
     }
 
     function rankingTogglePause() {
-      rankingUpdatesPaused = !rankingUpdatesPaused;
+      if (rankingUpdatesPaused) {
+        rankingPausedSnapshot = null;
+        rankingUpdatesPaused = false;
+      } else {
+        rankingPausedSnapshot = JSON.parse(JSON.stringify(rosterParticipants));
+        rankingUpdatesPaused = true;
+      }
       updateRankingFinalControlsUi();
+      renderRankingView();
     }
 
     function rankingRevealCeremonyStep(step) {
@@ -4309,7 +4317,6 @@
       };
       bind("rankingPauseBtn", () => {
         rankingTogglePause();
-        if (!rankingUpdatesPaused) renderRankingView();
       });
       bind("rankingReveal3Btn", () => rankingRevealCeremonyStep("r3"));
       bind("rankingReveal2Btn", () => rankingRevealCeremonyStep("r2"));
@@ -4341,15 +4348,28 @@
       };
     }
 
+    function withRankingParticipants(fn) {
+      if (!rankingUpdatesPaused || !rankingPausedSnapshot) return fn();
+      const saved = rosterParticipants;
+      rosterParticipants = rankingPausedSnapshot;
+      try {
+        return fn();
+      } finally {
+        rosterParticipants = saved;
+      }
+    }
+
     function buildSessionRankings(session) {
-      const teams = teamNamesInSession(session);
-      const all = teams.map((t) => computeTeamRankingEntry(session, t));
-      const ranked = all.filter((e) => e.complete).sort((a, b) => a.totalSec - b.totalSec);
-      ranked.forEach((e, i) => {
-        e.rank = i + 1;
+      return withRankingParticipants(() => {
+        const teams = teamNamesInSession(session);
+        const all = teams.map((t) => computeTeamRankingEntry(session, t));
+        const ranked = all.filter((e) => e.complete).sort((a, b) => a.totalSec - b.totalSec);
+        ranked.forEach((e, i) => {
+          e.rank = i + 1;
+        });
+        const pending = all.filter((e) => !e.complete);
+        return { ranked, pending, teams };
       });
-      const pending = all.filter((e) => !e.complete);
-      return { ranked, pending, teams };
     }
 
     const RANKING_DESIGN_W = 1920;
@@ -4408,7 +4428,6 @@
           if (e.key === "p" || e.key === "P") {
             e.preventDefault();
             rankingTogglePause();
-            if (!rankingUpdatesPaused) renderRankingView();
             return;
           }
           if (e.key === "3") {
@@ -4496,10 +4515,11 @@
       function rankingRowHtml(entry) {
         const isPending = !entry.complete;
         const rank = entry.rank;
+        const ceremonyMaskActive = ceremonyMode && !rankingUpdatesPaused;
         const ceremonyHidden =
-          ceremonyMode && !isPending && !isRankingRowCeremonyRevealed(rank, totalRanked);
+          ceremonyMaskActive && !isPending && !isRankingRowCeremonyRevealed(rank, totalRanked);
         const ceremonyJustRevealed =
-          ceremonyMode &&
+          ceremonyMaskActive &&
           !isPending &&
           isRankingRowCeremonyRevealed(rank, totalRanked) &&
           !isRankingRowCeremonyRevealed(rank, totalRanked, prevCeremonyState);
