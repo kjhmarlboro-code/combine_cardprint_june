@@ -2162,7 +2162,9 @@
     function resolveAppStage() {
       const params = new URLSearchParams(location.search);
       const fromUrl = Number(params.get("stage"));
+      if (fromUrl === 3) return 3;
       if (fromUrl === 2) return 2;
+      if (/final/i.test(location.pathname)) return 3;
       if (/stage2/i.test(location.pathname)) return 2;
       return 1;
     }
@@ -2184,6 +2186,14 @@
       { label: "FARMER'S CARRY", unit: "MM:SS.ss" },
       { label: "SKIERG", unit: "MM:SS.ss" },
     ];
+    const FINAL_METRICS = [
+      { label: "TREADMILL RUN", unit: "MM:SS.ss" },
+      { label: "SLED PUSH & PULL", unit: "MM:SS.ss" },
+      { label: "BURPEE BOX OVER", unit: "MM:SS.ss" },
+      { label: "REACTION INTELLIGENCE", unit: "MM:SS.ss" },
+      { label: "WORM", unit: "MM:SS.ss" },
+      { label: "ROWING & SKIERG", unit: "MM:SS.ss" },
+    ];
     const STAGE1_RANKING_HEADERS = [
       { en: "SPEED", ko: "셔틀런" },
       { en: "POWER", ko: "슬레드 푸시" },
@@ -2199,6 +2209,14 @@
       { en: "COGNITION", ko: "반응 지능 테스트" },
       { en: "STRENGTH", ko: "파머스 캐리" },
       { en: "ENDURANCE", ko: "스키에르그" },
+    ];
+    const FINAL_RANKING_HEADERS = [
+      { en: "SPEED", ko: "트레드밀 런" },
+      { en: "POWER", ko: "슬레드 푸시 & 풀" },
+      { en: "VERTICAL", ko: "버피 박스 오버" },
+      { en: "COGNITION", ko: "반응 지능 테스트" },
+      { en: "STRENGTH", ko: "웜" },
+      { en: "ENDURANCE", ko: "로잉 & 스키에르그" },
     ];
     /**
      * STAGE 1 종목별 팀 합산(4명) 등급표 — 스파이더 그래프 기준 (초, 짧을수록 좋음).
@@ -2226,6 +2244,15 @@
       3: 3, // REACTION INTELLIGENCE
       4: 4, // FARMER'S CARRY
       5: 5, // SKIERG ← ROWING(ENDURANCE)
+    };
+    /** FINAL metricIndex → STAGE 1 등급표 index (임시) */
+    const FINAL_SPIDER_GRADE_THRESHOLD_BY_METRIC = {
+      0: 0, // TREADMILL RUN ← SHUTTLE RUN(SPEED)
+      1: 1, // SLED PUSH & PULL ← SLED PUSH(POWER)
+      2: 2, // BURPEE BOX OVER ← BOX JUMP OVER(VERTICAL)
+      3: 3, // REACTION INTELLIGENCE
+      4: 4, // WORM ← FARMER'S CARRY(STRENGTH)
+      5: 5, // ROWING & SKIERG ← ROWING(ENDURANCE)
     };
     const STAGE_CONFIGS = {
       1: {
@@ -2256,6 +2283,21 @@
         rankingAdvanceBadge: "FINALIST",
         spiderGradeThresholdByMetric: STAGE2_SPIDER_GRADE_THRESHOLD_BY_METRIC,
         cardBg: "assets/card-bg-stage2.png",
+        cardMetricColor: "#282828",
+      },
+      3: {
+        metrics: FINAL_METRICS,
+        rankingHeaders: FINAL_RANKING_HEADERS,
+        maxSession: 1,
+        rankingAdvanceCount: 0,
+        sledPushSkippedSessions: new Set(),
+        storageKey: "combine_print_roster_v3",
+        appTitle: "UA NEXT COMBINE — FINAL",
+        panelTitle: "FINAL — 측정값 입력",
+        rankingBg: "assets/ranking-bg-final.png",
+        rankingAdvanceBadge: "",
+        spiderGradeThresholdByMetric: FINAL_SPIDER_GRADE_THRESHOLD_BY_METRIC,
+        cardBg: "assets/card-bg-final.png",
         cardMetricColor: "#282828",
       },
     };
@@ -4232,14 +4274,15 @@
         if (!isPending && rank === 1) rowCls += " ranking-row--p1";
         else if (!isPending && rank === 2) rowCls += " ranking-row--p2";
         else if (!isPending && rank === 3 && RANKING_ADVANCE_COUNT >= 3) rowCls += " ranking-row--p3";
-        else if (!isPending && rank > RANKING_ADVANCE_COUNT) rowCls += " ranking-row--rank-sub";
+        else if (!isPending && RANKING_ADVANCE_COUNT > 0 && rank > RANKING_ADVANCE_COUNT)
+          rowCls += " ranking-row--rank-sub";
         else if (isPending) rowCls += " ranking-row--pending";
 
         const advanceBadge = STAGE_CFG.rankingAdvanceBadge || "NEXT ROUND";
         const badge =
-          !isPending && rank <= RANKING_ADVANCE_COUNT
+          !isPending && RANKING_ADVANCE_COUNT > 0 && rank <= RANKING_ADVANCE_COUNT
             ? `<span class="ranking-row__badge">${escapeHtml(advanceBadge)}</span>`
-            : !isPending && rank > RANKING_ADVANCE_COUNT
+            : !isPending && RANKING_ADVANCE_COUNT > 0 && rank > RANKING_ADVANCE_COUNT
               ? `<span class="ranking-row__badge ranking-row__badge--spacer" aria-hidden="true">${escapeHtml(advanceBadge)}</span>`
               : "";
 
