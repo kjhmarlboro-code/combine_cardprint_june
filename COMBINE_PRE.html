@@ -1925,14 +1925,10 @@
     }
     .ranking-row--ceremony-hidden .ranking-row__rank-num,
     .ranking-row--ceremony-hidden .ranking-event-value,
-    .ranking-row--ceremony-hidden .ranking-total-value {
+    .ranking-row--ceremony-hidden .ranking-total-value,
+    .ranking-row--ceremony-hidden .ranking-team-label,
+    .ranking-row--ceremony-hidden .ranking-row__badge {
       visibility: hidden;
-    }
-    .ranking-row--ceremony-hidden .ranking-row__rank::after {
-      content: "?";
-      visibility: visible;
-      font-size: 28px;
-      color: rgba(0, 0, 0, 0.35);
     }
     .ranking-row--ceremony-revealed {
       animation: rankingCeremonyReveal 0.55s ease-out;
@@ -4594,11 +4590,13 @@
             ? "—"
             : escapeHtml(entry.totalDisplay);
 
+        const teamDisplay = ceremonyHidden ? "" : escapeHtml(entry.team);
+
         return `<tr class="${rowCls}">
           <td class="ranking-row__rank">${rankCell}</td>
           <td class="ranking-row__team">
             <div class="ranking-team-label">
-              <span class="ranking-team-label__text">${escapeHtml(entry.team)}</span>
+              <span class="ranking-team-label__text">${teamDisplay}</span>
             </div>${badge}
           </td>
           ${events}
