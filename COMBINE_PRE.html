@@ -4694,7 +4694,8 @@
     function formatAdminRankingTime(value) {
       const t = String(value || "").trim();
       if (!t) return "—";
-      if (t.startsWith("00:")) return t.slice(3);
+      const sec = parseNumber(t);
+      if (sec !== null) return formatSecondsToClock(sec);
       return t;
     }
 
