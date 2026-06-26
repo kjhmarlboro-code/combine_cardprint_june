@@ -1895,6 +1895,82 @@
       font-size: 20px;
       color: rgba(255, 255, 255, 0.4);
     }
+    /* FINAL 랭킹 — PAUSE / 시상식 공개 컨트롤 (운영용, TV 화면에는 거의 안 보임) */
+    .ranking-final-controls {
+      position: absolute;
+      right: 16px;
+      bottom: 16px;
+      z-index: 20;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      max-width: 520px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      background: rgba(0, 0, 0, 0.72);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      opacity: 0.35;
+      transition: opacity 0.2s;
+      pointer-events: auto;
+    }
+    .ranking-final-controls:hover,
+    .ranking-final-controls:focus-within {
+      opacity: 1;
+    }
+    .ranking-final-controls[hidden] {
+      display: none !important;
+    }
+    .ranking-final-controls button {
+      font-family: "Inter", "Noto Sans KR", sans-serif;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      padding: 8px 12px;
+      border-radius: 6px;
+      border: none;
+      cursor: pointer;
+      color: #000;
+      background: #03ff33;
+    }
+    .ranking-final-controls button.is-paused {
+      background: #ff4444;
+      color: #fff;
+    }
+    .ranking-final-controls button.ranking-final-controls__secondary {
+      background: rgba(255, 255, 255, 0.92);
+    }
+    .ranking-final-controls__status {
+      flex: 1 1 100%;
+      font-size: 11px;
+      color: rgba(255, 255, 255, 0.75);
+      line-height: 1.4;
+    }
+    .ranking-row--ceremony-hidden .ranking-row__rank-num,
+    .ranking-row--ceremony-hidden .ranking-event-value,
+    .ranking-row--ceremony-hidden .ranking-total-value {
+      visibility: hidden;
+    }
+    .ranking-row--ceremony-hidden .ranking-row__rank::after {
+      content: "?";
+      visibility: visible;
+      font-size: 28px;
+      color: rgba(0, 0, 0, 0.35);
+    }
+    .ranking-row--ceremony-revealed {
+      animation: rankingCeremonyReveal 0.55s ease-out;
+    }
+    @keyframes rankingCeremonyReveal {
+      from {
+        opacity: 0.2;
+        transform: translateY(6px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
     .ranking-col-rank { width: 72px; }
     .ranking-col-team { width: 24%; }
     .ranking-col-event { width: 9%; }
@@ -2112,6 +2188,15 @@
         fetchpriority="high"
       />
       <div class="ranking-body" id="rankingBody"></div>
+      <div class="ranking-final-controls no-print" id="rankingFinalControls" hidden>
+        <button type="button" id="rankingPauseBtn">PAUSE</button>
+        <button type="button" id="rankingReveal3Btn" class="ranking-final-controls__secondary">3위 공개 (3)</button>
+        <button type="button" id="rankingReveal2Btn" class="ranking-final-controls__secondary">2위 공개 (2)</button>
+        <button type="button" id="rankingReveal1Btn" class="ranking-final-controls__secondary">1위 공개 (1)</button>
+        <button type="button" id="rankingReveal4to6Btn" class="ranking-final-controls__secondary">4~6위 공개 (4)</button>
+        <button type="button" id="rankingResetRevealBtn" class="ranking-final-controls__secondary">공개 초기화 (0)</button>
+        <span class="ranking-final-controls__status" id="rankingFinalStatus"></span>
+      </div>
     </div>
   </div>
 
@@ -2299,6 +2384,7 @@
         spiderGradeThresholdByMetric: FINAL_SPIDER_GRADE_THRESHOLD_BY_METRIC,
         cardBg: "assets/card-bg-final.png",
         cardMetricColor: "#282828",
+        rankingCeremonyMode: true,
       },
     };
     const STAGE_CFG = STAGE_CONFIGS[APP_STAGE] || STAGE_CONFIGS[1];
@@ -4132,6 +4218,107 @@
         : ` ranking-row__event--${suffix}`;
     }
     let rankingSessionNum = 1;
+    let rankingUpdatesPaused = false;
+
+    function createRankingCeremonyState() {
+      return { r3: false, r2: false, r1: false, r4to6: false };
+    }
+    function cloneRankingCeremonyState(state) {
+      return { r3: state.r3, r2: state.r2, r1: state.r1, r4to6: state.r4to6 };
+    }
+    let rankingCeremonyRevealed = createRankingCeremonyState();
+    let rankingCeremonyRevealedPrev = createRankingCeremonyState();
+
+    function isRankingCeremonyMode() {
+      return !!(STAGE_CFG.rankingCeremonyMode && document.body.classList.contains("ranking-mode"));
+    }
+
+    function isRankCeremonyRevealed(rank, state) {
+      if (rank === 1) return state.r1;
+      if (rank === 2) return state.r2;
+      if (rank === 3) return state.r3;
+      if (rank >= 4) return state.r4to6;
+      return false;
+    }
+
+    function isRankingRowCeremonyRevealed(rank, totalRanked, stateOptional) {
+      if (!isRankingCeremonyMode() || totalRanked <= 0) return true;
+      if (rank > totalRanked) return false;
+      const state = stateOptional || rankingCeremonyRevealed;
+      return isRankCeremonyRevealed(rank, state);
+    }
+
+    function rankingCeremonyStatusLabel() {
+      const mark = (on) => (on ? "✓" : "·");
+      return `3위${mark(rankingCeremonyRevealed.r3)} 2위${mark(rankingCeremonyRevealed.r2)} 1위${mark(rankingCeremonyRevealed.r1)} 4~6위${mark(rankingCeremonyRevealed.r4to6)}`;
+    }
+
+    function updateRankingFinalControlsUi() {
+      const panel = document.getElementById("rankingFinalControls");
+      const pauseBtn = document.getElementById("rankingPauseBtn");
+      const status = document.getElementById("rankingFinalStatus");
+      if (!panel) return;
+      const show = isRankingCeremonyMode();
+      panel.hidden = !show;
+      if (!show) return;
+      if (pauseBtn) {
+        pauseBtn.textContent = rankingUpdatesPaused ? "RESUME" : "PAUSE";
+        pauseBtn.classList.toggle("is-paused", rankingUpdatesPaused);
+      }
+      if (status) {
+        const pauseTxt = rankingUpdatesPaused ? "기록 업데이트 PAUSE" : "실시간 반영 중";
+        status.textContent = `${pauseTxt} · ${rankingCeremonyStatusLabel()} · P=PAUSE · 3/2/1/4=공개 · 0=초기화`;
+      }
+    }
+
+    function rankingTogglePause() {
+      rankingUpdatesPaused = !rankingUpdatesPaused;
+      updateRankingFinalControlsUi();
+    }
+
+    function rankingRevealCeremonyStep(step) {
+      if (step === "r3") rankingCeremonyRevealed.r3 = true;
+      else if (step === "r2") rankingCeremonyRevealed.r2 = true;
+      else if (step === "r1") rankingCeremonyRevealed.r1 = true;
+      else if (step === "r4to6") rankingCeremonyRevealed.r4to6 = true;
+      renderRankingView();
+    }
+
+    function rankingResetReveal() {
+      rankingCeremonyRevealed = createRankingCeremonyState();
+      rankingCeremonyRevealedPrev = createRankingCeremonyState();
+      renderRankingView();
+    }
+
+    function initRankingFinalControls() {
+      const panel = document.getElementById("rankingFinalControls");
+      if (!panel || !STAGE_CFG.rankingCeremonyMode) return;
+      panel.hidden = false;
+      rankingUpdatesPaused = false;
+      rankingCeremonyRevealed = createRankingCeremonyState();
+      rankingCeremonyRevealedPrev = createRankingCeremonyState();
+
+      const bind = (id, fn) => {
+        const el = document.getElementById(id);
+        if (el) {
+          el.addEventListener("click", (e) => {
+            e.stopPropagation();
+            fn();
+          });
+        }
+      };
+      bind("rankingPauseBtn", () => {
+        rankingTogglePause();
+        if (!rankingUpdatesPaused) renderRankingView();
+      });
+      bind("rankingReveal3Btn", () => rankingRevealCeremonyStep("r3"));
+      bind("rankingReveal2Btn", () => rankingRevealCeremonyStep("r2"));
+      bind("rankingReveal1Btn", () => rankingRevealCeremonyStep("r1"));
+      bind("rankingReveal4to6Btn", () => rankingRevealCeremonyStep("r4to6"));
+      bind("rankingResetRevealBtn", rankingResetReveal);
+      panel.addEventListener("click", (e) => e.stopPropagation());
+      updateRankingFinalControlsUi();
+    }
 
     /** 회차·팀 1팀의 랭킹용 데이터 (1~3회차 SLED PUSH 제외, 4~6회차 6종목) */
     function computeTeamRankingEntry(session, team) {
@@ -4217,12 +4404,48 @@
       if (rv) rv.addEventListener("click", tryAppFullscreen, { once: true });
       document.addEventListener("keydown", (e) => {
         if (!document.body.classList.contains("ranking-mode")) return;
+        if (isRankingCeremonyMode()) {
+          if (e.key === "p" || e.key === "P") {
+            e.preventDefault();
+            rankingTogglePause();
+            if (!rankingUpdatesPaused) renderRankingView();
+            return;
+          }
+          if (e.key === "3") {
+            e.preventDefault();
+            rankingRevealCeremonyStep("r3");
+            return;
+          }
+          if (e.key === "2") {
+            e.preventDefault();
+            rankingRevealCeremonyStep("r2");
+            return;
+          }
+          if (e.key === "1") {
+            e.preventDefault();
+            rankingRevealCeremonyStep("r1");
+            return;
+          }
+          if (e.key === "4") {
+            e.preventDefault();
+            rankingRevealCeremonyStep("r4to6");
+            return;
+          }
+          if (e.key === "0") {
+            e.preventDefault();
+            rankingResetReveal();
+            return;
+          }
+        }
         const n = Number(e.key);
         if (n >= 1 && n <= MAX_SESSION) {
           rankingSessionNum = n;
+          rankingCeremonyRevealed = createRankingCeremonyState();
+          rankingCeremonyRevealedPrev = createRankingCeremonyState();
           renderRankingView();
         }
       });
+      initRankingFinalControls();
     }
 
     function showRankingLoading() {
@@ -4249,6 +4472,9 @@
       document.title = `${rankingSessionNum}회차 RANKING — ${STAGE_CFG.appTitle}`;
 
       const { ranked, pending, teams } = buildSessionRankings(rankingSessionNum);
+      const ceremonyMode = isRankingCeremonyMode();
+      const totalRanked = ranked.length;
+      const prevCeremonyState = cloneRankingCeremonyState(rankingCeremonyRevealedPrev);
 
       if (teams.length === 0) {
         body.innerHTML = `<div class="ranking-empty">${rankingSessionNum}회차에 등록된 팀이 없습니다.</div>`;
@@ -4270,11 +4496,21 @@
       function rankingRowHtml(entry) {
         const isPending = !entry.complete;
         const rank = entry.rank;
+        const ceremonyHidden =
+          ceremonyMode && !isPending && !isRankingRowCeremonyRevealed(rank, totalRanked);
+        const ceremonyJustRevealed =
+          ceremonyMode &&
+          !isPending &&
+          isRankingRowCeremonyRevealed(rank, totalRanked) &&
+          !isRankingRowCeremonyRevealed(rank, totalRanked, prevCeremonyState);
         let rowCls = "ranking-row";
-        if (!isPending && rank === 1) rowCls += " ranking-row--p1";
-        else if (!isPending && rank === 2) rowCls += " ranking-row--p2";
-        else if (!isPending && rank === 3 && RANKING_ADVANCE_COUNT >= 3) rowCls += " ranking-row--p3";
-        else if (!isPending && RANKING_ADVANCE_COUNT > 0 && rank > RANKING_ADVANCE_COUNT)
+        if (ceremonyHidden) rowCls += " ranking-row--ceremony-hidden";
+        else if (ceremonyJustRevealed) rowCls += " ranking-row--ceremony-revealed";
+        if (!ceremonyHidden && !isPending && rank === 1) rowCls += " ranking-row--p1";
+        else if (!ceremonyHidden && !isPending && rank === 2) rowCls += " ranking-row--p2";
+        else if (!ceremonyHidden && !isPending && rank === 3 && RANKING_ADVANCE_COUNT >= 3)
+          rowCls += " ranking-row--p3";
+        else if (!ceremonyHidden && !isPending && RANKING_ADVANCE_COUNT > 0 && rank > RANKING_ADVANCE_COUNT)
           rowCls += " ranking-row--rank-sub";
         else if (isPending) rowCls += " ranking-row--pending";
 
@@ -4288,16 +4524,26 @@
 
         const rankCell = isPending
           ? "—"
-          : `<span class="ranking-row__rank-num">${rank}</span>`;
+          : ceremonyHidden
+            ? ""
+            : `<span class="ranking-row__rank-num">${rank}</span>`;
 
         const sums = entry.eventSums || ["", "", "", "", "", ""];
         const events = sums
           .map((v, i) => {
             const cls = v ? "" : " is-empty";
             const extraCls = rankingEventExtraClass(i, "row");
-            return `<td class="ranking-row__event${cls}${extraCls}"><span class="ranking-event-value">${v ? escapeHtml(v) : "—"}</span></td>`;
+            const display = ceremonyHidden ? "—" : v ? escapeHtml(v) : "—";
+            const hiddenCls = ceremonyHidden ? " ranking-row__event--ceremony-hidden" : "";
+            return `<td class="ranking-row__event${cls}${extraCls}${hiddenCls}"><span class="ranking-event-value">${display}</span></td>`;
           })
           .join("");
+
+        const totalDisplay = ceremonyHidden
+          ? "—"
+          : isPending
+            ? "—"
+            : escapeHtml(entry.totalDisplay);
 
         return `<tr class="${rowCls}">
           <td class="ranking-row__rank">${rankCell}</td>
@@ -4307,7 +4553,7 @@
             </div>${badge}
           </td>
           ${events}
-          <td class="ranking-row__total"><span class="ranking-total-value">${isPending ? "—" : escapeHtml(entry.totalDisplay)}</span></td>
+          <td class="ranking-row__total"><span class="ranking-total-value">${totalDisplay}</span></td>
         </tr>`;
       }
 
@@ -4329,6 +4575,8 @@
           </thead>
           <tbody>${ranked.map(rankingRowHtml).join("")}${pending.map(rankingRowHtml).join("")}</tbody>
         </table>`;
+      rankingCeremonyRevealedPrev = cloneRankingCeremonyState(rankingCeremonyRevealed);
+      updateRankingFinalControlsUi();
       updateRankingStageScale();
     }
 
@@ -4776,7 +5024,7 @@
         if (isStation) {
           renderStationView();
         } else if (isRanking) {
-          renderRankingView();
+          if (!rankingUpdatesPaused) renderRankingView();
         } else {
           renderRosterStats();
           if (!editingMemberId && !addingTeamKey) renderRosterList();
