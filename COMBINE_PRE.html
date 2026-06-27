@@ -2858,6 +2858,26 @@
     function participantFromRow(d, opts) {
       const metrics = metricsArr6(d.metrics);
       let metricsHistory = metricsHistoryArr6(d.metrics_history);
+      const serverMetricsEmpty = metrics.every((m) => !String(m || "").trim());
+      const serverSummaryEmpty = !String(d.summary_avg || d.avg_manual || "").trim();
+
+      /** metrics는 비었는데 history만 남은 경우(구 upsert fallback) — 기록 복원 방지 */
+      if (serverMetricsEmpty && serverSummaryEmpty) {
+        return {
+          id: d.id,
+          name: d.name || "",
+          gender: d.gender === "F" ? "F" : "M",
+          session: d.session || 1,
+          team: d.team || "",
+          stage: d.stage != null ? Number(d.stage) : 1,
+          metrics: ["", "", "", "", "", ""],
+          metricsHistory: [[], [], [], [], [], []],
+          avgManual: "",
+          summaryAvg: undefined,
+          updatedAt: d.updated_at || undefined,
+        };
+      }
+
       if (!opts?.skipSeed) {
         metricsHistory = seedMetricsHistoryFromMetrics(metrics, metricsHistory);
       }
@@ -3014,7 +3034,14 @@
         .upsert(row)
         .then(({ error }) => {
           if (error && /metrics_history/i.test(String(error.message || ""))) {
-            const { metrics_history, ...rowNoHist } = row;
+            const clearedMetrics = metricsArr6(p.metrics).every((m) => !String(m || "").trim());
+            const rowNoHist = { ...row };
+            delete rowNoHist.metrics_history;
+            if (clearedMetrics) {
+              rowNoHist.metrics = ["", "", "", "", "", ""];
+              rowNoHist.summary_avg = "";
+              rowNoHist.avg_manual = "";
+            }
             sbClient.from(dbTable()).upsert(rowNoHist).then(({ error: e2 }) => {
               if (e2) setSyncBadge("err", "저장 오류");
             });
@@ -3030,13 +3057,27 @@
           if (error) setSyncBadge("err", "저장 오류");
         });
     }
-    /** 여러 참가자 저장(upsert) — 팀 등록 등 */
+    /** 여러 참가자 저장(upsert) — 팀 등록·회차 기록 비우기 등 */
     function dbUpsertMany(ps) {
       if (!dbReady || !sbClient || !ps || !ps.length) return;
+      const rows = ps.map(rowFromParticipant);
       sbClient
         .from(dbTable())
-        .upsert(ps.map(rowFromParticipant))
-        .then(({ error }) => { if (error) setSyncBadge("err", "저장 오류"); });
+        .upsert(rows)
+        .then(({ error }) => {
+          if (error && /metrics_history/i.test(String(error.message || ""))) {
+            const rowsNoHist = rows.map((row) => {
+              const next = { ...row };
+              delete next.metrics_history;
+              return next;
+            });
+            sbClient.from(dbTable()).upsert(rowsNoHist).then(({ error: e2 }) => {
+              if (e2) setSyncBadge("err", "저장 오류");
+            });
+            return;
+          }
+          if (error) setSyncBadge("err", "저장 오류");
+        });
     }
     /** id 목록 삭제 */
     function dbDeleteIds(ids) {
@@ -4222,6 +4263,7 @@
 
     function clearSessionAllRecords(session) {
       const cleared = [];
+      const ts = Date.now();
       rosterParticipants = rosterParticipants.map((p) => {
         if (!isCurrentStageParticipant(p) || (p.session || 1) !== session) return p;
         const next = {
@@ -4230,12 +4272,15 @@
           metricsHistory: [[], [], [], [], [], []],
           avgManual: "",
           summaryAvg: undefined,
-          updatedAt: Date.now(),
+          updatedAt: ts,
         };
         cleared.push(next);
         return next;
       });
-      cleared.forEach((p) => dbSetParticipant(p));
+      if (cleared.length) {
+        markRosterLocalWrites(cleared.map((p) => p.id), 12000);
+        dbUpsertMany(cleared);
+      }
       persistRosterLocal();
       return cleared.length;
     }
