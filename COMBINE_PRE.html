@@ -2500,6 +2500,21 @@
       // ROWING(ENDURANCE) — S≤3:18, A≤3:25, B≤3:35, C≤3:45
       5: { S: 198, A: 205, B: 215, C: 225 },
     };
+    /** FINAL 종목별 팀 합산(4명) 등급표 — 스파이더 그래프 (초, 짧을수록 좋음) */
+    const FINAL_TEAM_GRADE_THRESHOLDS = {
+      // TREADMILL RUN — S≤1:40, A≤1:47, B≤1:58, C≤2:09
+      0: { S: 100, A: 107, B: 118, C: 129 },
+      // SLED PUSH & PULL — S≤0:50, A≤0:55, B≤1:00, C≤1:05
+      1: { S: 50, A: 55, B: 60, C: 65 },
+      // BURPEE BOX OVER — S≤1:45, A≤1:50, B≤1:55, C≤2:00
+      2: { S: 105, A: 110, B: 115, C: 120 },
+      // REACTION INTELLIGENCE — S≤1:40, A≤1:45, B≤1:50, C≤1:55
+      3: { S: 100, A: 105, B: 110, C: 115 },
+      // WORM — S≤1:10, A≤1:20, B≤1:30, C≤1:40
+      4: { S: 70, A: 80, B: 90, C: 100 },
+      // ROWING & SKIERG — S≤4:50, A≤5:00, B≤5:10, C≤5:20
+      5: { S: 290, A: 300, B: 310, C: 320 },
+    };
     /** STAGE 2 metricIndex → STAGE 1 등급표 index (임시) */
     const STAGE2_SPIDER_GRADE_THRESHOLD_BY_METRIC = {
       0: 0, // SHUTTLE RUN
@@ -2509,14 +2524,14 @@
       4: 4, // FARMER'S CARRY
       5: 5, // SKIERG ← ROWING(ENDURANCE)
     };
-    /** FINAL metricIndex → STAGE 1 등급표 index (임시) */
+    /** FINAL metricIndex → STAGE 1 등급표 index (미사용 — FINAL_TEAM_GRADE_THRESHOLDS 우선) */
     const FINAL_SPIDER_GRADE_THRESHOLD_BY_METRIC = {
-      0: 0, // TREADMILL RUN ← SHUTTLE RUN(SPEED)
-      1: 1, // SLED PUSH & PULL ← SLED PUSH(POWER)
-      2: 2, // BURPEE BOX OVER ← BOX JUMP OVER(VERTICAL)
-      3: 3, // REACTION INTELLIGENCE
-      4: 4, // WORM ← FARMER'S CARRY(STRENGTH)
-      5: 5, // ROWING & SKIERG ← ROWING(ENDURANCE)
+      0: 0,
+      1: 1,
+      2: 2,
+      3: 3,
+      4: 4,
+      5: 5,
     };
     const STAGE_CONFIGS = {
       1: {
@@ -2561,6 +2576,7 @@
         rankingBg: "assets/ranking-bg-final.png",
         rankingAdvanceBadge: "",
         spiderGradeThresholdByMetric: FINAL_SPIDER_GRADE_THRESHOLD_BY_METRIC,
+        spiderGradeThresholds: FINAL_TEAM_GRADE_THRESHOLDS,
         cardBg: "assets/card-bg-final.png",
         cardMetricColor: "#282828",
         rankingCeremonyMode: true,
@@ -3766,6 +3782,8 @@
     }
 
     function getSpiderGradeThreshold(metricIndex) {
+      const direct = STAGE_CFG.spiderGradeThresholds;
+      if (direct && direct[metricIndex]) return direct[metricIndex];
       return STAGE1_TEAM_GRADE_THRESHOLDS[spiderGradeThresholdIndex(metricIndex)];
     }
 
