@@ -2366,7 +2366,7 @@
         fetchpriority="high"
       />
       <div class="ranking-body" id="rankingBody"></div>
-      <div class="ranking-pause-banner" id="rankingPauseBanner" hidden>잠시 후에 순위와 함께 갱신된 기록이 공개됩니다</div>
+      <div class="ranking-pause-banner" id="rankingPauseBanner" hidden></div>
       <div class="ranking-final-controls no-print" id="rankingFinalControls" hidden>
         <button type="button" id="rankingPauseBtn">PAUSE</button>
         <button type="button" id="rankingReveal3Btn" class="ranking-final-controls__secondary">3위 공개 (3)</button>
@@ -2580,6 +2580,11 @@
         cardBg: "assets/card-bg-final.png",
         cardMetricColor: "#282828",
         rankingCeremonyMode: true,
+        rankingPauseMessages: [
+          "17:10에 중간 순위와 함께 갱신된 기록이 공개됩니다.",
+          "17:20에 중간 순위와 함께 갱신된 기록이 공개됩니다.",
+          "잠시 후에 최종 순위와 함께 최종 기록이 공개됩니다.",
+        ],
       },
     };
     const STAGE_CFG = STAGE_CONFIGS[APP_STAGE] || STAGE_CONFIGS[1];
@@ -4524,6 +4529,7 @@
     let rankingSessionNum = 1;
     let rankingUpdatesPaused = false;
     let rankingPausedSnapshot = null;
+    let rankingPauseMessageIndex = 0;
 
     function createRankingCeremonyState() {
       return { r3: 0, r2: 0, r1: 0, r4to6: 0 };
@@ -4721,12 +4727,21 @@
       /* 단축키 전용 — UI 패널 숨김 */
     }
 
+    function getRankingPauseMessages() {
+      const msgs = STAGE_CFG.rankingPauseMessages;
+      return Array.isArray(msgs) && msgs.length ? msgs : null;
+    }
+
     function rankingTogglePause() {
       if (rankingUpdatesPaused) {
         rankingPausedSnapshot = null;
         rankingUpdatesPaused = false;
         renderRankingView();
         fetchRosterOnce(() => renderRankingView(), { force: true });
+        const msgs = getRankingPauseMessages();
+        if (msgs && rankingPauseMessageIndex < msgs.length - 1) {
+          rankingPauseMessageIndex += 1;
+        }
       } else {
         rankingPausedSnapshot = JSON.parse(JSON.stringify(rosterParticipants));
         rankingUpdatesPaused = true;
@@ -4737,7 +4752,16 @@
 
     function updateRankingPauseBanner() {
       const banner = document.getElementById("rankingPauseBanner");
-      if (banner) banner.hidden = !rankingUpdatesPaused;
+      if (!banner) return;
+      banner.hidden = !rankingUpdatesPaused;
+      if (!rankingUpdatesPaused) return;
+      const msgs = getRankingPauseMessages();
+      if (msgs) {
+        banner.textContent =
+          msgs[Math.min(rankingPauseMessageIndex, msgs.length - 1)] || msgs[0];
+      } else {
+        banner.textContent = "잠시 후에 순위와 함께 갱신된 기록이 공개됩니다";
+      }
     }
 
     function rankingRevealCeremonyStep(step) {
@@ -4770,6 +4794,7 @@
     function initRankingFinalControls() {
       if (!STAGE_CFG.rankingCeremonyMode) return;
       rankingUpdatesPaused = false;
+      rankingPauseMessageIndex = 0;
       rankingPausedSnapshot = null;
       rankingCeremonyPrep = false;
       resetPodiumAnimAll();
