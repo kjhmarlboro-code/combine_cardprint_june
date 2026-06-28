@@ -2610,8 +2610,16 @@
         cardBg: "assets/card-bg-final.png",
         cardMetricColor: "#282828",
         rankingCeremonyMode: true,
-        teamOrderEditable: true,
+        teamOrderEditable: false,
         rankingFixedTeamSlots: true,
+        fixedTeamDisplayOrder: [
+          "마사오",
+          "TEAMBUTFIT",
+          "SYNERGY",
+          "요정한결",
+          "레스고",
+          "호국아이들",
+        ],
         rankingPauseMessages: [
           "17:10에 중간 순위와 함께 갱신된 기록이 공개됩니다.",
           "잠시 후에 최종 순위와 함께 최종 기록이 공개됩니다.",
@@ -3239,7 +3247,25 @@
       return order != null && Number.isFinite(Number(order)) ? Number(order) : null;
     }
 
+    function indexInFixedTeamDisplayOrder(team) {
+      const fixed = STAGE_CFG.fixedTeamDisplayOrder;
+      if (!fixed || !fixed.length) return -1;
+      const t = String(team || "").trim();
+      return fixed.findIndex(
+        (name) =>
+          String(name).trim() === t ||
+          String(name).trim().toLocaleLowerCase("en-US") === t.toLocaleLowerCase("en-US")
+      );
+    }
+
     function compareTeamsByDisplayOrder(session, teamA, teamB) {
+      const ia = indexInFixedTeamDisplayOrder(teamA);
+      const ib = indexInFixedTeamDisplayOrder(teamB);
+      if (ia >= 0 || ib >= 0) {
+        const ra = ia >= 0 ? ia : Number.MAX_SAFE_INTEGER;
+        const rb = ib >= 0 ? ib : Number.MAX_SAFE_INTEGER;
+        if (ra !== rb) return ra - rb;
+      }
       const oa = getTeamOrder(session, teamA);
       const ob = getTeamOrder(session, teamB);
       if (oa != null && ob != null && oa !== ob) return oa - ob;
@@ -4988,10 +5014,13 @@
         });
         const pending = all.filter((e) => !e.complete);
         const rankByTeam = new Map(ranked.map((e) => [e.team, e.rank]));
+        const allTeamsComplete = teams.length > 0 && pending.length === 0;
         const displayRows = STAGE_CFG.rankingFixedTeamSlots
-          ? all.map((entry) =>
-              entry.complete ? { ...entry, rank: rankByTeam.get(entry.team) } : { ...entry, rank: undefined }
-            )
+          ? allTeamsComplete
+            ? ranked.map((entry) => ({ ...entry }))
+            : all.map((entry) =>
+                entry.complete ? { ...entry, rank: rankByTeam.get(entry.team) } : { ...entry, rank: undefined }
+              )
           : null;
         return { ranked, pending, teams, displayRows };
       });
