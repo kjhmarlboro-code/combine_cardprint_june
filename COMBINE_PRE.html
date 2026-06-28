@@ -2611,7 +2611,7 @@
         cardMetricColor: "#282828",
         rankingCeremonyMode: true,
         teamOrderEditable: false,
-        rankingFixedTeamSlots: true,
+        rankingFixedTeamSlots: false,
         fixedTeamDisplayOrder: [
           "마사오",
           "TEAMBUTFIT",
@@ -4971,6 +4971,23 @@
       rankingCeremonyRevealedPrev = createRankingCeremonyState();
     }
 
+    /** 랭킹 행 정렬용 — 완료 팀은 총합, 미완료는 입력된 종목 합(중간 순위) */
+    function teamRankingSortSec(entry, session) {
+      if (entry.complete && entry.totalSec != null) return entry.totalSec;
+      const sums = entry.eventSums || [];
+      let total = 0;
+      let hasAny = false;
+      for (let i = 0; i < 6; i++) {
+        if (isEventExcludedFromTotal(i, session)) continue;
+        const v = parseNumber(sums[i]);
+        if (v !== null) {
+          total += v;
+          hasAny = true;
+        }
+      }
+      return hasAny ? total : null;
+    }
+
     /** 회차·팀 1팀의 랭킹용 데이터 (1~3회차 SLED PUSH 제외, 4~6회차 6종목) */
     function computeTeamRankingEntry(session, team) {
       const eventSums = computeTeamEventSums(session, team);
@@ -5014,14 +5031,19 @@
         });
         const pending = all.filter((e) => !e.complete);
         const rankByTeam = new Map(ranked.map((e) => [e.team, e.rank]));
-        const allTeamsComplete = teams.length > 0 && pending.length === 0;
-        const displayRows = STAGE_CFG.rankingFixedTeamSlots
-          ? allTeamsComplete
-            ? ranked.map((entry) => ({ ...entry }))
-            : all.map((entry) =>
-                entry.complete ? { ...entry, rank: rankByTeam.get(entry.team) } : { ...entry, rank: undefined }
-              )
-          : null;
+        const displayRows = all
+          .slice()
+          .sort((a, b) => {
+            const sa = teamRankingSortSec(a, session);
+            const sb = teamRankingSortSec(b, session);
+            if (sa == null && sb == null) return compareTeamsByDisplayOrder(session, a.team, b.team);
+            if (sa == null) return 1;
+            if (sb == null) return -1;
+            return sa - sb;
+          })
+          .map((entry) =>
+            entry.complete ? { ...entry, rank: rankByTeam.get(entry.team) } : { ...entry, rank: undefined }
+          );
         return { ranked, pending, teams, displayRows };
       });
     }
@@ -5048,8 +5070,7 @@
       wrap.hidden = false;
       const session = Math.min(Math.max(rankingSessionNum || 1, 1), MAX_SESSION);
       const { ranked, pending, teams, displayRows } = buildSessionRankings(session);
-      const previewRows =
-        STAGE_CFG.rankingFixedTeamSlots && displayRows ? displayRows : [...ranked, ...pending];
+      const previewRows = displayRows;
       if (teams.length === 0) {
         body.innerHTML = `<div class="admin-ranking-preview__empty">${session}회차 등록된 팀이 없습니다.</div>`;
         return;
@@ -5359,8 +5380,7 @@
         </tr>`;
       }
 
-      const rankingRows =
-        STAGE_CFG.rankingFixedTeamSlots && displayRows ? displayRows : [...ranked, ...pending];
+      const rankingRows = displayRows;
 
       body.innerHTML = `
         <table class="ranking-table" aria-label="${rankingSessionNum}회차 팀 순위">
