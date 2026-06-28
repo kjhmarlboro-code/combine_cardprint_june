@@ -1750,7 +1750,6 @@
     }
     .ranking-pause-banner {
       position: absolute;
-      top: 218px;
       left: 50%;
       transform: translateX(-50%);
       z-index: 25;
@@ -1768,6 +1767,12 @@
       white-space: normal;
       pointer-events: none;
       user-select: none;
+    }
+    .ranking-pause-banner--mid {
+      top: 218px;
+    }
+    .ranking-pause-banner--final {
+      top: 718px;
     }
     .ranking-pause-banner[hidden] {
       display: none !important;
@@ -4925,11 +4930,14 @@
       banner.hidden = !rankingUpdatesPaused;
       if (!rankingUpdatesPaused) return;
       const msgs = getRankingPauseMessages();
+      const msgIndex = msgs ? Math.min(rankingPauseMessageIndex, msgs.length - 1) : 0;
+      banner.classList.remove("ranking-pause-banner--mid", "ranking-pause-banner--final");
+      banner.classList.add(msgIndex >= 1 ? "ranking-pause-banner--final" : "ranking-pause-banner--mid");
       if (msgs) {
-        banner.textContent =
-          msgs[Math.min(rankingPauseMessageIndex, msgs.length - 1)] || msgs[0];
+        banner.textContent = msgs[msgIndex] || msgs[0];
       } else {
         banner.textContent = "잠시 후에 순위와 함께 갱신된 기록이 공개됩니다";
+        banner.classList.add("ranking-pause-banner--mid");
       }
     }
 
