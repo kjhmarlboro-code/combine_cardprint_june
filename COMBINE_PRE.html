@@ -5030,20 +5030,18 @@
           e.rank = i + 1;
         });
         const pending = all.filter((e) => !e.complete);
-        const rankByTeam = new Map(ranked.map((e) => [e.team, e.rank]));
-        const displayRows = all
-          .slice()
-          .sort((a, b) => {
-            const sa = teamRankingSortSec(a, session);
-            const sb = teamRankingSortSec(b, session);
-            if (sa == null && sb == null) return compareTeamsByDisplayOrder(session, a.team, b.team);
-            if (sa == null) return 1;
-            if (sb == null) return -1;
-            return sa - sb;
-          })
-          .map((entry) =>
-            entry.complete ? { ...entry, rank: rankByTeam.get(entry.team) } : { ...entry, rank: undefined }
-          );
+        const pendingSorted = pending.slice().sort((a, b) => {
+          const sa = teamRankingSortSec(a, session);
+          const sb = teamRankingSortSec(b, session);
+          if (sa == null && sb == null) return compareTeamsByDisplayOrder(session, a.team, b.team);
+          if (sa == null) return 1;
+          if (sb == null) return -1;
+          return sa - sb;
+        });
+        const displayRows = [
+          ...ranked.map((entry) => ({ ...entry })),
+          ...pendingSorted.map((entry) => ({ ...entry, rank: undefined })),
+        ];
         return { ranked, pending, teams, displayRows };
       });
     }
