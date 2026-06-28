@@ -526,6 +526,35 @@
       white-space: nowrap;
     }
 
+    .roster-team-header__order {
+      display: flex;
+      flex-shrink: 0;
+      gap: 2px;
+      margin-left: auto;
+    }
+
+    .roster-team-header__move {
+      width: 24px;
+      height: 24px;
+      border: 1px solid rgba(109, 75, 168, 0.35);
+      border-radius: 5px;
+      background: #fff;
+      color: #6d4ba8;
+      font-size: 11px;
+      line-height: 1;
+      cursor: pointer;
+      padding: 0;
+    }
+
+    .roster-team-header__move:hover:not(:disabled) {
+      background: #f3e5f5;
+    }
+
+    .roster-team-header__move:disabled {
+      opacity: 0.35;
+      cursor: default;
+    }
+
     .roster-team-header__remove {
       flex-shrink: 0;
       width: 26px;
@@ -2404,6 +2433,7 @@
      *    );
      *    alter table public.roster add column if not exists stage int default 1;
      *    alter table public.roster add column if not exists metrics_history jsonb;
+     *    alter table public.roster add column if not exists team_order int;
      *    alter table public.roster enable row level security;
      *    drop policy if exists "roster anon all" on public.roster;
      *    create policy "roster anon all" on public.roster
@@ -2580,6 +2610,8 @@
         cardBg: "assets/card-bg-final.png",
         cardMetricColor: "#282828",
         rankingCeremonyMode: true,
+        teamOrderEditable: true,
+        rankingFixedTeamSlots: true,
         rankingPauseMessages: [
           "17:10에 중간 순위와 함께 갱신된 기록이 공개됩니다.",
           "잠시 후에 최종 순위와 함께 최종 기록이 공개됩니다.",
@@ -2860,7 +2892,7 @@
 
     /** 앱 참가자 객체 → Supabase row (snake_case 컬럼) */
     function rowFromParticipant(p) {
-      return {
+      const row = {
         id: p.id,
         name: p.name || "",
         gender: p.gender === "F" ? "F" : "M",
@@ -2873,6 +2905,10 @@
         summary_avg: p.summaryAvg || "",
         updated_at: p.updatedAt || Date.now(),
       };
+      if (p.teamOrder != null && Number.isFinite(Number(p.teamOrder))) {
+        row.team_order = Number(p.teamOrder);
+      }
+      return row;
     }
     /** Supabase row → 앱 참가자 객체 */
     function participantFromRow(d, opts) {
@@ -2895,6 +2931,7 @@
           avgManual: "",
           summaryAvg: undefined,
           updatedAt: d.updated_at || undefined,
+          teamOrder: d.team_order != null ? Number(d.team_order) : undefined,
         };
       }
 
@@ -2913,6 +2950,7 @@
         avgManual: d.avg_manual || "",
         summaryAvg: d.summary_avg ? d.summary_avg : undefined,
         updatedAt: d.updated_at || undefined,
+        teamOrder: d.team_order != null ? Number(d.team_order) : undefined,
       });
     }
 
@@ -3067,6 +3105,13 @@
             });
             return;
           }
+          if (error && /\bteam_order\b/i.test(String(error.message || ""))) {
+            const { team_order, ...rowNoOrder } = row;
+            sbClient.from(dbTable()).upsert(rowNoOrder).then(({ error: e4 }) => {
+              if (e4) setSyncBadge("err", "저장 오류");
+            });
+            return;
+          }
           if (error && /\bstage\b/i.test(String(error.message || ""))) {
             const { stage, ...rowNoStage } = row;
             sbClient.from(dbTable()).upsert(rowNoStage).then(({ error: e3 }) => {
@@ -3093,6 +3138,13 @@
             });
             sbClient.from(dbTable()).upsert(rowsNoHist).then(({ error: e2 }) => {
               if (e2) setSyncBadge("err", "저장 오류");
+            });
+            return;
+          }
+          if (error && /\bteam_order\b/i.test(String(error.message || ""))) {
+            const rowsNoOrder = rows.map(({ team_order, ...row }) => row);
+            sbClient.from(dbTable()).upsert(rowsNoOrder).then(({ error: e3 }) => {
+              if (e3) setSyncBadge("err", "저장 오류");
             });
             return;
           }
@@ -3179,13 +3231,84 @@
       return count < TEAM_GENDER_CAP;
     }
 
-    /** 특정 회차의 등록된 팀명 목록 (중복 제거) */
+    /** 특정 회차의 등록된 팀명 목록 (중복 제거, teamOrder 순) */
+    function getTeamOrder(session, team) {
+      const members = getTeamMembers(session, team);
+      if (!members.length) return null;
+      const order = members[0].teamOrder;
+      return order != null && Number.isFinite(Number(order)) ? Number(order) : null;
+    }
+
+    function compareTeamsByDisplayOrder(session, teamA, teamB) {
+      const oa = getTeamOrder(session, teamA);
+      const ob = getTeamOrder(session, teamB);
+      if (oa != null && ob != null && oa !== ob) return oa - ob;
+      if (oa != null && ob == null) return -1;
+      if (oa == null && ob != null) return 1;
+      return String(teamA || "").localeCompare(String(teamB || ""), "ko");
+    }
+
     function teamNamesInSession(session) {
       const set = new Set();
       rosterParticipants.forEach((p) => {
-        if (isCurrentStageParticipant(p) && p.session === session && p.team) set.add(p.team);
+        if (isCurrentStageParticipant(p) && (p.session || 1) === session && p.team) set.add(p.team);
       });
-      return Array.from(set);
+      return Array.from(set).sort((a, b) => compareTeamsByDisplayOrder(session, a, b));
+    }
+
+    function setTeamOrder(session, team, order, opts) {
+      const ts = Date.now();
+      const updated = [];
+      getTeamMembers(session, team).forEach((p) => {
+        const i = rosterParticipants.findIndex((x) => x.id === p.id);
+        if (i < 0) return;
+        rosterParticipants[i] = { ...rosterParticipants[i], teamOrder: order, updatedAt: ts };
+        updated.push(rosterParticipants[i]);
+      });
+      if (updated.length) {
+        markRosterLocalWrites(updated.map((p) => p.id));
+        dbUpsertMany(updated);
+        persistRosterLocal();
+      }
+      if (!opts || !opts.skipRender) {
+        renderRosterList();
+        if (typeof renderAdminRankingPreview === "function") renderAdminRankingPreview();
+      }
+    }
+
+    function ensureTeamOrdersForSession(session) {
+      if (!STAGE_CFG.teamOrderEditable) return;
+      const set = new Set();
+      rosterParticipants.forEach((p) => {
+        if (isCurrentStageParticipant(p) && (p.session || 1) === session && p.team) set.add(p.team);
+      });
+      const teams = Array.from(set);
+      if (!teams.length) return;
+      if (teams.every((t) => getTeamOrder(session, t) != null)) return;
+      const withOrder = teams
+        .filter((t) => getTeamOrder(session, t) != null)
+        .sort((a, b) => getTeamOrder(session, a) - getTeamOrder(session, b));
+      const withoutOrder = teams
+        .filter((t) => getTeamOrder(session, t) == null)
+        .sort((a, b) => String(a).localeCompare(String(b), "ko"));
+      const ordered = [...withOrder, ...withoutOrder];
+      ordered.forEach((team, idx) => {
+        if (getTeamOrder(session, team) !== idx) setTeamOrder(session, team, idx, { skipRender: true });
+      });
+    }
+
+    function moveTeamDisplayOrder(session, team, delta) {
+      ensureTeamOrdersForSession(session);
+      const teams = teamNamesInSession(session);
+      const idx = teams.indexOf(team);
+      if (idx < 0) return;
+      const newIdx = idx + delta;
+      if (newIdx < 0 || newIdx >= teams.length) return;
+      ensureTeamOrdersForSession(session);
+      const orderA = getTeamOrder(session, teams[idx]);
+      const orderB = getTeamOrder(session, teams[newIdx]);
+      setTeamOrder(session, teams[idx], orderB, { skipRender: true });
+      setTeamOrder(session, teams[newIdx], orderA);
     }
 
     function renderRosterStats() {
@@ -3491,19 +3614,34 @@
         groups[idxMap.get(key)].members.push(p);
       });
 
-      groups.forEach((group) => {
+      groups.sort((a, b) => compareTeamsByDisplayOrder(a.session, a.team, b.team));
+
+      groups.forEach((group, groupIndex) => {
         const isOpen = expandedTeams.has(group.key);
         const header = document.createElement("li");
         header.className = `roster-team-header${isOpen ? " is-open" : ""}`;
         const menCount = countTeamGender(group.session, group.team, "M");
         const womenCount = countTeamGender(group.session, group.team, "F");
         const teamLabel = group.team ? escapeHtml(String(group.team)) : "미지정 팀";
+        const orderControls = STAGE_CFG.teamOrderEditable
+          ? `<span class="roster-team-header__order">
+              <button type="button" class="roster-team-header__move" data-move="-1" aria-label="팀 순서 위로"${groupIndex === 0 ? " disabled" : ""}>▲</button>
+              <button type="button" class="roster-team-header__move" data-move="1" aria-label="팀 순서 아래로"${groupIndex === groups.length - 1 ? " disabled" : ""}>▼</button>
+            </span>`
+          : "";
         header.innerHTML = `
           <span class="roster-team-header__toggle" aria-hidden="true">${isOpen ? "▼" : "▶"}</span>
           <span class="roster-team-header__title">${group.session}회차 · ${teamLabel}</span>
           <span class="roster-team-header__count">남 ${menCount}/${TEAM_GENDER_CAP} · 여 ${womenCount}/${TEAM_GENDER_CAP}</span>
+          ${orderControls}
           <button type="button" class="roster-team-header__remove" aria-label="팀 삭제">×</button>
         `;
+        header.querySelectorAll(".roster-team-header__move").forEach((btn) => {
+          btn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            moveTeamDisplayOrder(group.session, group.team, Number(btn.dataset.move));
+          });
+        });
         header.addEventListener("click", () => {
           applyTeamToCard(group.session, group.team);
           if (expandedTeams.has(group.key)) expandedTeams.delete(group.key);
@@ -3624,6 +3762,12 @@
         return;
       }
 
+      const nextTeamOrder =
+        existingTeams.reduce((max, t) => {
+          const o = getTeamOrder(session, t);
+          return o != null ? Math.max(max, o) : max;
+        }, -1) + 1;
+
       const newMembers = members.map((mem) => ({
         id: newRosterId(),
         name: mem.name,
@@ -3631,6 +3775,7 @@
         session,
         team: teamName,
         stage: APP_STAGE,
+        teamOrder: nextTeamOrder,
         metricsHistory: [[], [], [], [], [], []],
         updatedAt: Date.now(),
       }));
@@ -3650,6 +3795,9 @@
 
     function initRoster() {
       loadRoster();
+      if (STAGE_CFG.teamOrderEditable) {
+        for (let s = 1; s <= MAX_SESSION; s++) ensureTeamOrdersForSession(s);
+      }
       updateRegSessionButtons();
       renderRosterStats();
       renderRosterList();
@@ -4027,13 +4175,7 @@
     function populateStationTeamSelect() {
       const sel = document.getElementById("stationTeamSelect");
       if (!sel) return;
-      const teams = Array.from(
-        new Set(
-          rosterParticipants
-            .filter((p) => isCurrentStageParticipant(p) && (p.session || 1) === stationSessionNum && p.team)
-            .map((p) => String(p.team))
-        )
-      ).sort((a, b) => a.localeCompare(b, "ko"));
+      const teams = teamNamesInSession(stationSessionNum);
       if (stationTeam && !teams.includes(stationTeam)) stationTeam = "";
       const opts = [`<option value="">전체 보기 (${teams.length}팀)</option>`].concat(
         teams.map((t) => `<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`)
@@ -4127,6 +4269,8 @@
           }
           groups[idx.get(key)].members.push(p);
         });
+
+      groups.sort((a, b) => compareTeamsByDisplayOrder(stationSessionNum, a.team, b.team));
 
       groups.forEach((g) => {
         const card = document.createElement("div");
@@ -4835,6 +4979,7 @@
 
     function buildSessionRankings(session) {
       return withRankingParticipants(() => {
+        ensureTeamOrdersForSession(session);
         const teams = teamNamesInSession(session);
         const all = teams.map((t) => computeTeamRankingEntry(session, t));
         const ranked = all.filter((e) => e.complete).sort((a, b) => a.totalSec - b.totalSec);
@@ -4842,7 +4987,13 @@
           e.rank = i + 1;
         });
         const pending = all.filter((e) => !e.complete);
-        return { ranked, pending, teams };
+        const rankByTeam = new Map(ranked.map((e) => [e.team, e.rank]));
+        const displayRows = STAGE_CFG.rankingFixedTeamSlots
+          ? all.map((entry) =>
+              entry.complete ? { ...entry, rank: rankByTeam.get(entry.team) } : { ...entry, rank: undefined }
+            )
+          : null;
+        return { ranked, pending, teams, displayRows };
       });
     }
 
@@ -4867,7 +5018,9 @@
       }
       wrap.hidden = false;
       const session = Math.min(Math.max(rankingSessionNum || 1, 1), MAX_SESSION);
-      const { ranked, pending, teams } = buildSessionRankings(session);
+      const { ranked, pending, teams, displayRows } = buildSessionRankings(session);
+      const previewRows =
+        STAGE_CFG.rankingFixedTeamSlots && displayRows ? displayRows : [...ranked, ...pending];
       if (teams.length === 0) {
         body.innerHTML = `<div class="admin-ranking-preview__empty">${session}회차 등록된 팀이 없습니다.</div>`;
         return;
@@ -4913,7 +5066,7 @@
               <th>합계</th>
             </tr>
           </thead>
-          <tbody>${ranked.map(adminRowHtml).join("")}${pending.map(adminRowHtml).join("")}</tbody>
+          <tbody>${previewRows.map(adminRowHtml).join("")}</tbody>
         </table>`;
     }
 
@@ -5051,7 +5204,7 @@
       if (!body) return;
       document.title = `${rankingSessionNum}회차 RANKING — ${STAGE_CFG.appTitle}`;
 
-      const { ranked, pending, teams } = buildSessionRankings(rankingSessionNum);
+      const { ranked, pending, teams, displayRows } = buildSessionRankings(rankingSessionNum);
       const ceremonyMode = isRankingCeremonyMode();
       const totalRanked = ranked.length;
       const prevCeremonyState = cloneRankingCeremonyState(rankingCeremonyRevealedPrev);
@@ -5177,6 +5330,9 @@
         </tr>`;
       }
 
+      const rankingRows =
+        STAGE_CFG.rankingFixedTeamSlots && displayRows ? displayRows : [...ranked, ...pending];
+
       body.innerHTML = `
         <table class="ranking-table" aria-label="${rankingSessionNum}회차 팀 순위">
           <colgroup>
@@ -5193,7 +5349,7 @@
               <th class="ranking-th--total" aria-hidden="true"></th>
             </tr>
           </thead>
-          <tbody>${ranked.map(rankingRowHtml).join("")}${pending.map(rankingRowHtml).join("")}</tbody>
+          <tbody>${rankingRows.map(rankingRowHtml).join("")}</tbody>
         </table>`;
       rankingCeremonyRevealedPrev = cloneRankingCeremonyState(rankingCeremonyRevealed);
       updateRankingPauseBanner();
@@ -5642,6 +5798,9 @@
       const usingDb = initSupabase();
 
       const onRosterUpdate = () => {
+        if (STAGE_CFG.teamOrderEditable) {
+          for (let s = 1; s <= MAX_SESSION; s++) ensureTeamOrdersForSession(s);
+        }
         if (isStation) {
           renderStationView();
         } else if (isRanking) {
